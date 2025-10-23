@@ -1,2 +1,9 @@
 __pycache__
 .env
+.cdsapirc
+data
+cache
+tier2_data
+training_logs
+*.log
+models
