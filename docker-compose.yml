@@ -1,0 +1,41 @@
+services:
+
+  # Training service - trains the model
+  trainer:
+    build: .
+    container_name: smart_grid_trainer
+    
+    env_file:
+      - .env
+    
+    volumes:
+      - ./:/app
+      - ./data/model:/app/models
+      - ./data/training:/app/training_logs
+    
+    # Run training once at startup
+    command: python train.py
+    
+    # Don't restart after training completes
+    restart: "no"
+    
+  # Web service - runs the Flask app
+  app:
+    build: .
+    container_name: smart_grid_app
+    
+    env_file:
+      - .env
+    
+    volumes:
+      - ./:/app
+      - ./data/model:/app/models
+      - ./data/app:/app/data
+    
+    ports:
+      - "8000:8000"
+    
+    depends_on:
+      - trainer
+    
+    command: python -u app.py

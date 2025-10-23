@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Grid - Electricity Price Predictor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card h2 {
+            font-size: 0.9em;
+            color: #667eea;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+        }
+
+        .card-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .card-subtitle {
+            font-size: 0.95em;
+            color: #666;
+        }
+
+        .price-card {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .price-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-top: 15px;
+        }
+
+        .badge-low {
+            background: #10b981;
+            color: white;
+        }
+
+        .badge-medium {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .badge-high {
+            background: #ef4444;
+            color: white;
+        }
+
+        .badge-critical {
+            background: #991b1b;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .data-sources {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            margin-top: 30px;
+        }
+
+        .source-item {
+            padding: 15px;
+            background: #f3f4f6;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .source-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .source-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .source-status {
+            font-size: 0.8em;
+            color: #10b981;
+            margin-top: 5px;
+        }
+
+        .source-status.error {
+            color: #ef4444;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+            color: #667eea;
+        }
+
+        button:hover {
+            background: #f3f4f6;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .status-bar {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .status-text {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        footer {
+            text-align: center;
+            color: white;
+            margin-top: 50px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 1.8em;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .card-value {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚡ Smart Grid</h1>
+            <p>Real-time Electricity Price Prediction</p>
+        </header>
+
+        <div class="status-bar">
+            <span class="status-text" id="status">Initializing...</span>
+            <div class="status-indicator"></div>
+        </div>
+
+        <div class="error-message" id="error-message"></div>
+
+        <div class="controls">
+            <button class="btn-primary" onclick="getPrediction()">
+                <span id="predict-btn">Get Prediction</span>
+            </button>
+            <button onclick="getTier2Data()">Data Sources</button>
+            <button onclick="getModelInfo()">Model Info</button>
+            <button onclick="autoRefresh()">Auto Refresh</button>
+        </div>
+
+        <div class="grid">
+            <div class="card price-card">
+                <h2>Predicted Price</h2>
+                <div class="card-value" id="price-value">--</div>
+                <div class="card-subtitle">€/MWh</div>
+                <div id="price-level"></div>
+                <div class="card-subtitle" id="price-time" style="margin-top: 15px; font-size: 0.85em;">--</div>
+            </div>
+
+            <div class="card">
+                <h2>Price Level</h2>
+                <div class="card-value" id="level-value">--</div>
+                <div class="card-subtitle" id="level-description">--</div>
+            </div>
+
+            <div class="card">
+                <h2>Confidence</h2>
+                <div class="card-value" id="confidence-value">--</div>
+                <div class="card-subtitle">Model reliability</div>
+            </div>
+        </div>
+
+        <div class="data-sources" id="data-sources-container" style="display: none;">
+            <h2 style="grid-column: 1/-1; color: #333;">Data Sources Status</h2>
+            <div class="source-item">
+                <div class="source-label">Power Plants</div>
+                <div class="source-value" id="plants-count">-</div>
+                <div class="source-status" id="plants-status">Loading...</div>
+            </div>
+
+            <div class="source-item">
+                <div class="source-label">Transmission Lines</div>
+                <div class="source-value" id="lines-count">-</div>
+                <div class="source-status" id="lines-status">Loading...</div>
+            </div>
+
+            <div class="source-item">
+                <div class="source-label">Price Records</div>
+                <div class="source-value" id="prices-count">-</div>
+                <div class="source-status" id="prices-status">Loading...</div>
+            </div>
+
+            <div class="source-item">
+                <div class="source-label">Weather Data</div>
+                <div class="source-value" id="weather-value">-</div>
+                <div class="source-status" id="weather-status">Loading...</div>
+            </div>
+
+            <div class="source-item">
+                <div class="source-label">Recent Earthquakes</div>
+                <div class="source-value" id="earthquakes-count">-</div>
+                <div class="source-status" id="earthquakes-status">Loading...</div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Smart Grid ML - Electricity Price Forecasting System</p>
+            <p style="margin-top: 10px; opacity: 0.7;">Data sources: CAISO, NOAA, EIA, NASA FIRMS, USGS</p>
+        </footer>
+    </div>
+
+    <script>
+        let autoRefreshInterval = null;
+
+        async function getPrediction() {
+            const btn = document.getElementById('predict-btn');
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading"></span>';
+
+            try {
+                const response = await fetch('/predict');
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('price-value').textContent = data.predicted_price.toFixed(2);
+                    document.getElementById('level-value').textContent = data.price_level;
+                    document.getElementById('level-description').textContent = data.description;
+                    document.getElementById('confidence-value').textContent = data.confidence;
+                    document.getElementById('price-time').textContent = new Date(data.timestamp).toLocaleString();
+
+                    const levelClass = `badge-${data.price_level.toLowerCase()}`;
+                    document.getElementById('price-level').innerHTML = 
+                        `<div class="price-badge ${levelClass}">${data.price_level}</div>`;
+
+                    document.getElementById('status').textContent = '✓ Online - Prediction successful';
+                    document.getElementById('error-message').style.display = 'none';
+                } else {
+                    showError(data.error || 'Prediction failed');
+                }
+            } catch (error) {
+                showError(`Error: ${error.message}`);
+            } finally {
+                btn.textContent = originalText;
+            }
+        }
+
+        async function getTier2Data() {
+            const container = document.getElementById('data-sources-container');
+            container.style.display = container.style.display === 'none' ? 'grid' : 'none';
+
+            if (container.style.display === 'none') return;
+
+            try {
+                const response = await fetch('/tier2-data');
+                const data = await response.json();
+
+                if (response.ok) {
+                    updateDataSource('plants', data.power_plants);
+                    updateDataSource('lines', data.transmission_lines);
+                    updateDataSource('prices', data.prices);
+                    updateDataSource('weather', data.weather);
+                    updateDataSource('earthquakes', data.earthquakes);
+                    document.getElementById('error-message').style.display = 'none';
+                } else {
+                    showError(data.error || 'Failed to fetch Tier 2 data');
+                }
+            } catch (error) {
+                showError(`Error: ${error.message}`);
+            }
+        }
+
+        function updateDataSource(name, data) {
+            if (!data) return;
+
+            if (data.count !== undefined) {
+                document.getElementById(`${name}-count`).textContent = data.count;
+                document.getElementById(`${name}-status`).textContent = 
+                    data.available ? '✓ Available' : '✗ Unavailable';
+                document.getElementById(`${name}-status`).className = 
+                    data.available ? 'source-status' : 'source-status error';
+            } else if (typeof data === 'object') {
+                if (data.temperature !== undefined) {
+                    document.getElementById('weather-value').textContent = 
+                        data.temperature.toFixed(1) + '°C';
+                    document.getElementById('weather-status').textContent = '✓ Available';
+                }
+            }
+        }
+
+        async function getModelInfo() {
+            try {
+                const response = await fetch('/model-info');
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert(`Model Info:\n\n` +
+                        `Version: ${data.version}\n` +
+                        `Features: ${data.features}\n` +
+                        `Status: ${data.status}\n` +
+                        `Training MAE: ${data.training_metadata.metrics?.mae?.toFixed(2)} €/MWh`);
+                    document.getElementById('error-message').style.display = 'none';
+                } else {
+                    showError(data.error || 'Failed to fetch model info');
+                }
+            } catch (error) {
+                showError(`Error: ${error.message}`);
+            }
+        }
+
+        function autoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                document.getElementById('status').textContent = 'Auto-refresh: OFF';
+            } else {
+                getPrediction();
+                autoRefreshInterval = setInterval(getPrediction, 10000); // 10 seconds
+                document.getElementById('status').textContent = 'Auto-refresh: ON (10s)';
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            document.getElementById('status').textContent = '✗ Error: ' + message;
+        }
+
+        // Initial checks
+        async function healthCheck() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+
+                if (data.model_loaded) {
+                    document.getElementById('status').textContent = '✓ Online - Ready for predictions';
+                    getPrediction();
+                } else {
+                    showError('Model not loaded. Run: python train.py');
+                }
+            } catch (error) {
+                showError(`Connection failed: ${error.message}`);
+            }
+        }
+
+        // Run on page load
+        window.addEventListener('load', healthCheck);
+    </script>
+</body>
+</html>
