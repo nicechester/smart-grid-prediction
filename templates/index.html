@@ -254,6 +254,23 @@
             opacity: 0.8;
         }
 
+        .location-dropdown {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1em;
+            flex: 1;
+        }
+
+        #location-input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1em;
+            display: none;
+            flex: 2;
+        }
+
         @media (max-width: 768px) {
             header h1 {
                 font-size: 1.8em;
@@ -265,6 +282,11 @@
 
             .card-value {
                 font-size: 2em;
+            }
+
+            .controls {
+                flex-direction: column;
+                gap: 15px;
             }
         }
     </style>
@@ -284,6 +306,12 @@
         <div class="error-message" id="error-message"></div>
 
         <div class="controls">
+            <select id="location-select" class="location-dropdown">
+                <option value="">Select Location</option>
+                <option value="city">City</option>
+                <option value="county">County</option>
+            </select>
+            <input type="text" id="location-input" placeholder="Enter city or county" style="display: none;">
             <button class="btn-primary" onclick="getPrediction()">
                 <span id="predict-btn">Get Prediction</span>
             </button>
@@ -296,7 +324,7 @@
             <div class="card price-card">
                 <h2>Predicted Price</h2>
                 <div class="card-value" id="price-value">--</div>
-                <div class="card-subtitle">€/MWh</div>
+                <div class="card-subtitle">$/MWh</div>
                 <div id="price-level"></div>
                 <div class="card-subtitle" id="price-time" style="margin-top: 15px; font-size: 0.85em;">--</div>
             </div>
@@ -310,7 +338,7 @@
             <div class="card">
                 <h2>Confidence</h2>
                 <div class="card-value" id="confidence-value">--</div>
-                <div class="card-subtitle">Model reliability</div>
+                <div class="card-subtitle">Model reliability ($)</div>
             </div>
         </div>
 
@@ -356,13 +384,32 @@
     <script>
         let autoRefreshInterval = null;
 
+        document.getElementById('location-select').addEventListener('change', function() {
+            const locationInput = document.getElementById('location-input');
+            if (this.value) {
+                locationInput.style.display = 'inline-block';
+                locationInput.placeholder = `Enter ${this.value}`;
+            } else {
+                locationInput.style.display = 'none';
+            }
+        });
+
         async function getPrediction() {
             const btn = document.getElementById('predict-btn');
             const originalText = btn.textContent;
             btn.innerHTML = '<span class="loading"></span>';
 
+            const locationType = document.getElementById('location-select').value;
+            const locationValue = document.getElementById('location-input').value;
+
+            if (!locationType || !locationValue) {
+                showError('Please select a location type and enter a value.');
+                btn.textContent = originalText;
+                return;
+            }
+
             try {
-                const response = await fetch('/predict');
+                const response = await fetch(`/predict?location_type=${locationType}&location_value=${encodeURIComponent(locationValue)}`);
                 const data = await response.json();
 
                 if (response.ok) {

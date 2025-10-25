@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 # Set the working directory in the container
-WORKDIR /app
+WORKDIR /app/src
 
 # Install system dependencies including GDAL for geopandas
 RUN apt-get update && apt-get install -y \
@@ -15,13 +15,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first (for Docker layer caching)
-COPY requirements.txt .
+COPY requirements.txt /app/
 
 # Install Python packages
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy the application files to the container
-COPY . /app
+COPY src/ /app/src/
+COPY data/ /app/data/
+COPY templates/ /app/templates/
 
 # Expose the port the app runs on
 EXPOSE 8000

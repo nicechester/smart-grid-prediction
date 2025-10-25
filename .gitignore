@@ -7,3 +7,4 @@ tier2_data
 training_logs
 *.log
 models
+.DS_Store

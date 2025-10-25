@@ -40,8 +40,8 @@ class Config:
     EIA_API_KEY = None
     
     # Data paths
-    DATA_DIR = "data"
-    MODEL_DIR = "models"
+    DATA_DIR = "/app/data"
+    MODEL_DIR = "/app/data/models"
     
     # Model parameters
     TEST_SIZE = 0.2
@@ -283,6 +283,52 @@ class PricePredictor:
         """
         X_scaled = self.scaler.transform(X)
         return self.model.predict(X_scaled, verbose=0)
+    
+    def predict_for_location(self, features: Dict, location_data: Dict = None) -> Dict:
+        """
+        Predict price for a specific location with additional context
+        
+        Args:
+            features: Dictionary of feature values
+            location_data: Optional location-specific data (weather, demand profile, etc.)
+        
+        Returns:
+            Dictionary with prediction and metadata
+        """
+        # Adjust features based on location profile if provided
+        if location_data and 'demand_profile' in location_data:
+            from locations import DEMAND_PROFILES
+            profile = DEMAND_PROFILES.get(location_data['demand_profile'], {})
+            
+            # Apply location-specific adjustments
+            if 'ac_sensitivity' in profile:
+                # Adjust for AC demand sensitivity
+                temp = features.get('temperature', 20)
+                if temp > 25:
+                    ac_factor = profile['ac_sensitivity']
+                    features['total_demand'] = features.get('total_demand', 20000) * (1 + ac_factor * 0.1)
+            
+            if 'seasonal_factor' in profile:
+                # Apply seasonal multiplier
+                features['grid_stress'] = features.get('grid_stress', 0.5) * profile['seasonal_factor']
+        
+        # Build feature array matching training order
+        if self.feature_names is None:
+            raise ValueError("Model not trained or loaded properly - feature_names is None")
+        
+        X = np.array([[features.get(fname, 0) for fname in self.feature_names]])
+        
+        # Predict
+        price = self.predict(X)[0][0]
+        
+        # Build response
+        result = {
+            'predicted_price': float(price),
+            'features_used': features,
+            'location': location_data.get('name', 'Unknown') if location_data else 'Unknown'
+        }
+        
+        return result
     
     def evaluate(self, X_test: np.ndarray, y_test: np.ndarray) -> Dict:
         """
