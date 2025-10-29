@@ -322,12 +322,24 @@ def get_region(region_id: str) -> Optional[Dict]:
     return CAISO_REGIONS.get(region_id)
 
 def get_city(city_id: str) -> Optional[Dict]:
-    """Get city by ID"""
-    return CALIFORNIA_CITIES.get(city_id)
+    """Get city by ID or name (case-insensitive)"""
+    city_id_lower = city_id.lower().strip()
+    logger.info(f"Looking up city for ID/name: {city_id_lower}")
+    for cid, city in CALIFORNIA_CITIES.items():
+        if cid.lower() == city_id_lower or city['name'].lower() == city_id_lower:
+            logger.info(f"Found city: {city['name']}")
+            city['id'] = cid  # Add canonical ID
+            return city
+    logger.warning(f"City not found: {city_id_lower}")
+    return None
 
 def get_county(county_id: str) -> Optional[Dict]:
-    """Get county by ID"""
-    return CALIFORNIA_COUNTIES.get(county_id)
+    """Get county by ID or name (case-insensitive)"""
+    county_id_lower = county_id.lower().strip()
+    for cid, county in CALIFORNIA_COUNTIES.items():
+        if cid.lower() == county_id_lower or county['name'].lower() == county_id_lower:
+            return county
+    return None
 
 def get_cities_in_region(region_id: str) -> List[Tuple[str, Dict]]:
     """Get all cities in a region"""
