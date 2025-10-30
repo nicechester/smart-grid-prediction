@@ -16,7 +16,7 @@ import json
 import pickle
 import argparse
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 
@@ -26,7 +26,8 @@ from sklearn.preprocessing import StandardScaler
 
 # Import from main modules
 from main import Config, PricePredictor, generate_training_data
-from tier2_pipeline import Tier2Config, Tier2DataPipeline, CAISOPriceFetcher
+from tier2_pipeline import Tier2Config, Tier2DataPipeline, CAISOPriceFetcher, NOAAWeather
+from tier2_pipeline import PowerPlantDB, DisasterRisk
 
 # Setup logging
 logging.basicConfig(
@@ -52,6 +53,7 @@ class TrainingConfig:
     MIN_SAMPLES = 500  # Minimum samples to train
     VALIDATION_SPLIT = 0.2
     RANDOM_STATE = 42
+    DATE_RANGE_MONTHS = 36  # Date range delta in months for data fetching
 
 # ============================================
 # Feature Engineering (Local)
@@ -175,57 +177,193 @@ def process_caiso_price_data(caiso_df: pd.DataFrame) -> pd.DataFrame:
 # ============================================
 
 def build_training_data(pipeline: Tier2DataPipeline = None, use_tier2: bool = True, 
-                       synthetic_days: int = 365) -> pd.DataFrame:
-    # ... (initial setup) ...
-    
+                        synthetic_days: int = 365) -> pd.DataFrame:
+    """
+    Build training data by combining CAISO price data and real weather data.
+    """
     df = None
-    
+
     if use_tier2:
         try:
             if pipeline is None:
                 pipeline = Tier2DataPipeline(api_key=Config.EIA_API_KEY)
             
-            # Try CAISO price data first (NEW)
-            logger.info("1️⃣  Attempting CAISO price data (Concurrent City Fetch)...")
+            # Create an instance of NOAAWeather
+            noaa_weather = NOAAWeather()
+
+            # Fetch weather data
+            logger.info("1️⃣  Fetching weather data...")
+            end_date = datetime.today()
+            start_date = end_date - timedelta(days=TrainingConfig.DATE_RANGE_MONTHS * 30)
             
-            # --- START OF FIX: Use the existing concurrent city fetcher ---
-            start_date = "20230101" # Updated to match YYYYMMDD format
-            end_date = "20250731"   # Updated to match YYYYMMDD format
-            
-            # CAISOPriceFetcher.fetch_all_cities_prices is already concurrent and handles errors/skipping
-            caiso_prices_dict = CAISOPriceFetcher.fetch_all_cities_prices(
-                start_date=start_date, 
-                end_date=end_date,
-                market='DAM',
-                max_workers=Tier2Config.MAX_WORKERS # Use your config setting
+            weather_data = noaa_weather.get_all_california_weather(
+                max_workers=5,
+                start_date=start_date,
+                end_date=end_date
             )
+
+            if not weather_data:
+                raise ValueError("Weather data fetch failed. No data available.")
+
+            # Extract results from NOAA weather data grouped by city_id
+            weather_records = []
+            for city_id, response in weather_data.items():
+                logger.info(f"Processing weather data for city_id: {city_id}")
+                results = response.get('results', [])
+                if not results:
+                    logger.warning(f"No results found for city_id: {city_id}")
+                    continue
+                
+                for record in results:
+                    if 'date' not in record or 'value' not in record:
+                        logger.warning(f"Skipping incomplete record for city_id: {city_id}")
+                        continue
+                    
+                    record['city_id'] = city_id
+                    record['timestamp'] = record.pop('date')
+                    weather_records.append(record)
+                
+                logger.info(f"✓ Processed {len([r for r in weather_records if r['city_id'] == city_id])} weather records for city_id: {city_id}")
+
+            if not weather_records:
+                raise ValueError("No valid weather records found after filtering.")
+
+            # Convert weather data to DataFrame
+            weather_df = pd.DataFrame(weather_records)
+            weather_df['timestamp'] = pd.to_datetime(weather_df['timestamp'], errors='coerce')
+            weather_df = weather_df.dropna(subset=['timestamp'])
+            weather_df['city_id'] = weather_df['city_id'].astype(str)
+
+            # PIVOT weather data from long to wide format
+            logger.info("Pivoting weather data from long to wide format...")
             
-            if caiso_prices_dict:
-                # Combine all successful city dataframes into one for training
-                caiso_combined = pd.concat(list(caiso_prices_dict.values()), ignore_index=True)
-                
-                # We need a 'timestamp' column and a 'price' column for processing
-                # The columns in the returned DF from fetch_city_prices are:
-                # timestamp, node, lmp, energy, congestion, loss, city_id, city_name, zone
-                
-                # Map 'lmp' column to 'price' for the process_caiso_price_data function
-                caiso_combined.rename(columns={'lmp': 'price'}, inplace=True)
-                
-                # Process into training format
-                df = process_caiso_price_data(caiso_combined)
-                
-                if df is not None and len(df) > 0:
-                    logger.info(f"✓ Loaded {len(df)} CAISO records from {len(caiso_prices_dict)} cities.")
-                    return df
-            # --- END OF FIX ---
+            # Weather data has columns: timestamp, city_id, datatype, value, station, attributes
+            # We need to pivot so each datatype becomes its own column
+            weather_pivot = weather_df.pivot_table(
+                index=['timestamp', 'city_id'],
+                columns='datatype',
+                values='value',
+                aggfunc='first'  # Take first value if duplicates
+            ).reset_index()
             
-            # If we reached here, either fetch_all_cities_prices failed entirely or returned empty
-            logger.error("❌ CAISO data not available or empty. Failing fast.")
-            raise ValueError("CAISO data fetch failed. Unable to proceed without valid data.")
-                        
+            # Flatten column names
+            weather_pivot.columns.name = None
+            
+            # Rename datatype codes to meaningful names
+            weather_column_mapping = {
+                'PRCP': 'precipitation',
+                'SNOW': 'snowfall',
+                'TMAX': 'temp_max',
+                'TMIN': 'temp_min',
+                'TOBS': 'temperature',
+                'AWND': 'wind_speed',
+                'TAVG': 'temp_avg'
+            }
+            weather_pivot = weather_pivot.rename(columns=weather_column_mapping)
+            
+            # Fill missing weather values with reasonable defaults
+            weather_defaults = {
+                'temperature': 20.0,
+                'temp_max': 25.0,
+                'temp_min': 15.0,
+                'precipitation': 0.0,
+                'snowfall': 0.0,
+                'wind_speed': 5.0
+            }
+            for col, default in weather_defaults.items():
+                if col in weather_pivot.columns:
+                    weather_pivot[col].fillna(default, inplace=True)
+            
+            logger.info(f"✓ Pivoted weather data: {len(weather_pivot)} records, {len(weather_pivot.columns)} columns")
+
+            # Fetch CAISO price data
+            logger.info("2️⃣  Fetching CAISO price data...")
+            caiso_prices_dict = CAISOPriceFetcher.fetch_all_cities_prices(
+                start_date=start_date.strftime('%Y%m%d'), 
+                end_date=end_date.strftime('%Y%m%d'),
+                market='DAM',
+                max_workers=Tier2Config.MAX_WORKERS
+            )
+
+            if not caiso_prices_dict:
+                raise ValueError("CAISO data fetch failed. No data available.")
+
+            # Combine CAISO data into a single DataFrame
+            caiso_combined = pd.concat(list(caiso_prices_dict.values()), ignore_index=True)
+            caiso_combined.rename(columns={'lmp': 'price'}, inplace=True)
+            caiso_combined['city_id'] = caiso_combined['city_id'].astype(str)
+            caiso_combined.dropna(subset=['price'], inplace=True)
+
+            # Merge CAISO data with pivoted weather data
+            logger.info("3️⃣  Merging CAISO and weather data...")
+            caiso_combined['timestamp'] = pd.to_datetime(caiso_combined['timestamp']).dt.tz_localize(None)
+            weather_pivot['timestamp'] = pd.to_datetime(weather_pivot['timestamp']).dt.tz_localize(None)
+            
+            df = pd.merge_asof(
+                caiso_combined.sort_values('timestamp'),
+                weather_pivot.sort_values('timestamp'),
+                on='timestamp',
+                by='city_id',
+                direction='nearest'
+            )
+
+            if df is None or len(df) == 0:
+                raise ValueError("Merging CAISO and weather data failed. No data available.")
+            
+            logger.info(f"✓ Merged dataset contains {len(df)} records.")
+            
+            # Drop metadata columns before training
+            metadata_cols = ['node', 'city_id', 'city_name', 'zone']
+            cols_to_drop = [col for col in metadata_cols if col in df.columns]
+            if cols_to_drop:
+                logger.info(f"Dropping metadata columns: {cols_to_drop}")
+                df = df.drop(columns=cols_to_drop)
+            
+            # Fetch power plant data (static aggregated features)
+            logger.info("4️⃣  Fetching power plant data...")
+            power_plants_df = PowerPlantDB.download_plants()
+
+            if power_plants_df is not None:
+                total_capacity = power_plants_df['capacity_mw'].sum()
+                avg_capacity = power_plants_df['capacity_mw'].mean()
+                plant_count = len(power_plants_df)
+
+                df['total_plant_capacity'] = total_capacity
+                df['avg_plant_capacity'] = avg_capacity
+                df['plant_count'] = plant_count
+                logger.info(f"✓ Added power plant features: Total Capacity={total_capacity:.2f}, Count={plant_count}")
+            else:
+                logger.warning("No power plant data available.")
+            
+            # Fetch earthquake data with proper date range
+            logger.info("5️⃣  Fetching earthquake data...")
+            earthquakes_df = DisasterRisk.get_recent_earthquakes(
+                start_date=start_date,
+                end_date=end_date,
+                min_magnitude=2.0
+            )
+
+            if earthquakes_df is not None and len(earthquakes_df) > 0:
+                # Aggregate earthquake data as static features
+                quake_count = len(earthquakes_df)
+                avg_magnitude = earthquakes_df['magnitude'].mean()
+                max_magnitude = earthquakes_df['magnitude'].max()
+
+                # Add as static features across all records
+                df['recent_quake_count'] = quake_count
+                df['avg_quake_magnitude'] = avg_magnitude
+                df['max_quake_magnitude'] = max_magnitude
+                logger.info(f"✓ Added earthquake features: Count={quake_count}, Avg Mag={avg_magnitude:.2f}, Max Mag={max_magnitude:.2f}")
+            else:
+                logger.warning("No earthquake data available.")
+                # Add default values so feature columns exist
+                df['recent_quake_count'] = 0
+                df['avg_quake_magnitude'] = 0.0
+                df['max_quake_magnitude'] = 0.0
+        
         except Exception as e:
-            logger.warning(f"Tier 2 data fetch failed: {e}")
-            raise ValueError("Tier 2 data fetch failed. Unable to proceed without valid data.")
+            logger.error(f"Data fetch or merge failed: {e}", exc_info=True)
+            raise ValueError("Data preparation failed.")
     
     return df
 
@@ -369,9 +507,13 @@ def main():
     parser.add_argument('--batch-size', type=int, default=TrainingConfig.BATCH_SIZE, help='Batch size')
     parser.add_argument('--synthetic-days', type=int, default=365, help='Synthetic data days if Tier 2 fails')
     parser.add_argument('--no-tier2', action='store_true', help='Skip Tier 2, use synthetic only')
+    parser.add_argument('--date-range-months', type=int, default=TrainingConfig.DATE_RANGE_MONTHS, help='Override date range in months for data fetching')
     
     args = parser.parse_args()
-    
+
+    # Override TrainingConfig.DATE_RANGE_MONTHS if provided
+    TrainingConfig.DATE_RANGE_MONTHS = args.date_range_months
+
     logger.info("")
     logger.info("=" * 70)
     logger.info("SMART GRID ML - MODEL RETRAINING (CAISO-ENABLED)")

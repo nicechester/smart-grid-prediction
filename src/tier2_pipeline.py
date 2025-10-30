@@ -44,6 +44,9 @@ except ImportError:
     GEOSPATIAL_AVAILABLE = False
     logger.warning("osmnx/geopandas not installed. Transmission lines unavailable.")
 
+# NOAA API Base URL
+NCEI_API_BASE_URL = "https://www.ncdc.noaa.gov/cdo-web/api/v2"
+
 # ============================================
 # CONFIGURATION
 # ============================================
@@ -375,42 +378,74 @@ class PowerPlantDB:
 
 class NOAAWeather:
     """NOAA weather forecast data"""
-    
-    @staticmethod
-    def _fetch_city_weather(city_id: str, city_data: Dict) -> Tuple[str, Optional[Dict]]:
+
+    def __init__(self):
+        """Initialize NOAAWeather class and load stations data."""
+        if not hasattr(self, 'stations_df') or self.stations_df is None:
+            self.stations_df = self.get_california_stations()
+
+    def get_all_california_weather(self, max_workers: int = 5, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> Dict[str, Dict]:
+        """Fetch weather for all cities concurrently with optional date range filtering"""
+        logger.info("=" * 70)
+        logger.info("FETCHING WEATHER FOR ALL CALIFORNIA CITIES")
+        logger.info("=" * 70)
+
+        results = {}
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_city = {
+                executor.submit(self.get_historic_weather, city_data['name'], start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')): city_id
+                for city_id, city_data in CALIFORNIA_CITIES.items()
+            }
+
+            for future in as_completed(future_to_city):
+                city_id = future_to_city[future]
+                try:
+                    weather_data = future.result()
+                    if weather_data:
+                        results[city_id] = weather_data
+                    time.sleep(Tier2Config.RATE_LIMIT_DELAY)
+                except Exception as e:
+                    logger.error(f"Error processing {city_id}: {e}")
+
+        logger.info(f"✓ Successfully fetched weather for {len(results)}/{len(CALIFORNIA_CITIES)} cities")
+        return results
+
+    def _fetch_city_weather(self, city_id: str, city_data: Dict) -> Tuple[str, Optional[Dict]]:
         """Fetch weather for a single city"""
+        logger.info(f"Fetching weather for {city_data['name']}...")
         try:
             lat = city_data['lat']
             lon = city_data['lon']
-            
+
             session = requests.Session()
             session.headers.update({'User-Agent': 'SmartGridML/1.0'})
-            
+
             points_url = f"https://api.weather.gov/points/{lat},{lon}"
             points_resp = session.get(points_url, timeout=10)
             points_resp.raise_for_status()
             points_data = points_resp.json()
-            
+
             forecast_url = points_data['properties']['forecast']
             forecast_resp = session.get(forecast_url, timeout=10)
             forecast_resp.raise_for_status()
             forecast_data = forecast_resp.json()
-            
+
             periods = forecast_data['properties']['periods'][:24]
-            
+
             temps = []
             winds = []
-            
+
             for period in periods:
                 temp_f = period['temperature']
                 temp_c = (temp_f - 32) * 5/9
                 temps.append(temp_c)
-                
+
                 wind_str = period['windSpeed']
                 wind_mph = float(wind_str.split()[0])
                 wind_mps = wind_mph * 0.44704
                 winds.append(wind_mps)
-            
+
             weather = {
                 'city_id': city_id,
                 'city_name': city_data['name'],
@@ -420,78 +455,147 @@ class NOAAWeather:
                 'wind_speed': np.mean(winds),
                 'timestamp': datetime.now().isoformat()
             }
-            
+
             logger.info(f"✓ Weather for {city_data['name']}: {weather['temperature']:.1f}°C")
             return city_id, weather
-            
+
         except Exception as e:
             logger.warning(f"✗ Weather fetch failed for {city_data['name']}: {e}")
             return city_id, None
-    
+
     @staticmethod
-    def get_all_california_weather(max_workers: int = 5) -> Dict[str, Dict]:
-        """Fetch weather for all cities concurrently"""
-        logger.info("=" * 70)
-        logger.info("FETCHING WEATHER FOR ALL CALIFORNIA CITIES")
-        logger.info("=" * 70)
-        
-        results = {}
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_city = {
-                executor.submit(NOAAWeather._fetch_city_weather, city_id, city_data): city_id
-                for city_id, city_data in CALIFORNIA_CITIES.items()
+    def get_california_stations():
+        logger.info("Fetching NOAA weather stations in California...")
+        headers = {'token': os.getenv('NCEI_TOKEN')}
+        all_stations = []
+        offset = 0
+        limit = 1000  # Set the limit per request
+
+        while True:
+            logger.info(".")
+            params = {
+                'locationid': 'FIPS:06',  # California FIPS code
+                'datasetid': 'GHCND',     # Daily dataset
+                'limit': limit,           # Max results per page
+                'offset': offset,         # Offset for pagination
+                'sortfield': 'name'
             }
-            
-            for future in as_completed(future_to_city):
-                city_id = future_to_city[future]
-                try:
-                    city_id, weather = future.result()
-                    if weather is not None:
-                        results[city_id] = weather
-                    time.sleep(Tier2Config.RATE_LIMIT_DELAY)
-                except Exception as e:
-                    logger.error(f"Error processing {city_id}: {e}")
-        
-        logger.info(f"✓ Successfully fetched weather for {len(results)}/{len(CALIFORNIA_CITIES)} cities")
-        return results
+
+            response = requests.get(
+                f"{NCEI_API_BASE_URL}/stations",
+                headers=headers,
+                params=params
+            )
+
+            # Check if the request was successful (status code 200)
+            if response.status_code != 200:
+                raise ValueError(f"Error: API request failed with status code {response.status_code}")
+
+            data = response.json()
+            results = data.get('results', [])
+
+            if not results:
+                break  # No more results
+
+            for station in results:
+                all_stations.append({
+                    'id': station['id'],
+                    'name': station['name'],
+                    'latitude': station.get('latitude'),
+                    'longitude': station.get('longitude'),
+                    'elevation': station.get('elevation'),
+                    'mindate': station.get('mindate'),
+                    'maxdate': station.get('maxdate')
+                })
+
+            offset += limit  # Increment the offset for the next page
+
+        return pd.DataFrame(all_stations)
+
+    def search_stations_by_city(self, city_name: str):
+        """Search for weather stations near a city"""
+        matching = [
+            row.to_dict() for index, row in self.stations_df.iterrows()
+            if city_name.upper() in row['name'].upper()
+        ]
+        return pd.DataFrame(matching)
+
+    def get_historic_weather(self, city_name: str, start_date: str, end_date: str):
+        """Get historic weather data for a city"""
+        logger.info(f"Fetching historic weather for {city_name} from {start_date} to {end_date}...")
+        station_ids = self.search_stations_by_city(city_name)['id'].tolist()
+
+        headers = {'token': os.getenv('NCEI_TOKEN')}
+        params = {
+            'datasetid': 'GHCND',
+            'stationid': station_ids,
+            'startdate': start_date,
+            'enddate': end_date,
+            'units': 'standard',
+            'limit': 1000,
+            'offset': 0
+        }
+
+        response = requests.get(
+            f"{NCEI_API_BASE_URL}/data",
+            headers=headers,
+            params=params
+        )
+
+        if response.status_code != 200:
+            raise ValueError(f"Error: API request failed with status code {response.status_code}")
+
+        return response.json()
 
 
 class DisasterRisk:
     """Earthquake hazards from USGS"""
     
     @staticmethod
-    def get_recent_earthquakes(days: int = 7, min_magnitude: float = 2.0) -> Optional[pd.DataFrame]:
-        """Get earthquakes in California"""
+    def get_recent_earthquakes(start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, min_magnitude: float = 2.0) -> Optional[pd.DataFrame]:
+        """Get earthquakes in California within a date range using the USGS API"""
         try:
-            url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"
-            
-            response = requests.get(url, timeout=10)
+            if start_date is None or end_date is None:
+                raise ValueError("Both start_date and end_date must be provided.")
+
+            url = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+            params = {
+                'format': 'csv',
+                'starttime': start_date.strftime('%Y-%m-%d'),
+                'endtime': end_date.strftime('%Y-%m-%d'),
+                'minmagnitude': min_magnitude,
+                'minlatitude': 32.5,
+                'maxlatitude': 42,
+                'minlongitude': -124.5,
+                'maxlongitude': -114
+            }
+
+            response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
-            data = response.json()
-            
-            quakes = []
-            for feature in data['features']:
-                props = feature['properties']
-                coords = feature['geometry']['coordinates']
-                
-                lat, lon = coords[1], coords[0]
-                if 32.5 <= lat <= 42 and -124.5 <= lon <= -114:
-                    mag = props.get('mag', 0)
-                    if mag >= min_magnitude:
-                        quakes.append({
-                            'latitude': lat,
-                            'longitude': lon,
-                            'magnitude': mag,
-                            'time': datetime.fromtimestamp(props['time'] / 1000),
-                            'depth_km': coords[2],
-                            'place': props.get('place', 'Unknown')
-                        })
-            
-            df = pd.DataFrame(quakes)
+
+            # Read CSV data into DataFrame
+            from io import StringIO
+            df = pd.read_csv(StringIO(response.text))
+
+            # Ensure required columns exist
+            if not {'latitude', 'longitude', 'mag', 'time', 'depth'}.issubset(df.columns):
+                raise ValueError("Unexpected data format from USGS API")
+
+            # Rename columns for consistency
+            df = df.rename(columns={
+                'latitude': 'latitude',
+                'longitude': 'longitude',
+                'mag': 'magnitude',
+                'time': 'time',
+                'depth': 'depth_km'
+            })
+
+            # Convert time to datetime
+            df['time'] = pd.to_datetime(df['time'])
+
             logger.info(f"✓ Retrieved {len(df)} California earthquakes (M≥{min_magnitude})")
-            return df if len(df) > 0 else None
-        
+            return df
+
         except Exception as e:
             logger.warning(f"Earthquake data fetch failed: {e}")
             return None
