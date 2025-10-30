@@ -300,7 +300,11 @@ def predict():
         else:
             data = request.args
         
-        location_id = data.get('location_id', 'los_angeles')
+        logger.info(f"Request args: {request.args}")
+
+        location_id = data.get('location_id')
+        if not location_id:
+            return jsonify({'error': 'location_id is required and was not provided.'}), 400
         location_type = data.get('location_type', 'city')
         
         # Get location info
@@ -313,10 +317,10 @@ def predict():
         
         if not location:
             return jsonify({'error': f'Location not found: {location_id}'}), 404
-        
+        location_id = location["id"]  # Use canonical ID
         # Build features
         features = build_features_for_location(location_id, location_type)
-        
+
         # Log the input features for debugging
         logger.info(f"Input features for prediction: {list(features.keys())}")
 

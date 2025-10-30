@@ -65,7 +65,7 @@ Smart Grid ML predicts electricity prices for California's power grid (CAISO) us
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Updated Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -88,7 +88,8 @@ Smart Grid ML predicts electricity prices for California's power grid (CAISO) us
 │ • Training     │  │ • NOAA      │  │ • Cities       │
 │ • Prediction   │  │ • EIA       │  │ • Counties     │
 │ • Save/Load    │  │ • USGS      │  │ • Profiles     │
-└────────────────┘  │ • OSMnx     │  └────────────────┘
+│                │  │ • PowerDB   │  │                │
+└────────────────┘  │             │  └────────────────┘
                     └─────────────┘
                            │
                     ┌──────▼──────┐
@@ -116,7 +117,7 @@ PricePredictor.predict() → JSON Response
 
 ---
 
-## 📊 Data Sources
+## 📊 Updated Data Sources
 
 ### 1. CartoDB - Power Plant Database
 - **Source**: World Resources Institute (WRI)
@@ -125,15 +126,6 @@ PricePredictor.predict() → JSON Response
 - **Coverage**: ~30,000 power plants worldwide
 - **CA Plants**: ~500+ facilities
 - **Fields**: Name, fuel type, capacity (MW), coordinates
-
-```python
-# Example: CA plants by fuel type
-Solar: 150+ facilities
-Natural Gas: 200+ facilities
-Wind: 80+ facilities
-Hydro: 50+ facilities
-Nuclear: 2 facilities (Diablo Canyon, Palo Verde)
-```
 
 ### 2. NOAA - Weather Data
 - **Source**: National Weather Service API
@@ -150,8 +142,6 @@ Nuclear: 2 facilities (Diablo Canyon, Palo Verde)
 - **Region**: CAISO (California ISO)
 - **History**: Up to 5,000 records
 - **Requires**: API Key (free)
-
-**Get API Key**: [https://www.eia.gov/opendata/register.php](https://www.eia.gov/opendata/register.php)
 
 ### 4. USGS - Earthquake Data
 - **Source**: U.S. Geological Survey

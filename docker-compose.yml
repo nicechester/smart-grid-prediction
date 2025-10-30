@@ -13,7 +13,7 @@ services:
       - ./data:/app/data
     
     # Run training once at startup
-    command: python train.py
+    command: python train.py --date-range-months 12
     
     # Don't restart after training completes
     restart: "no"

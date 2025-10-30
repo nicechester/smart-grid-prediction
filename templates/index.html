@@ -409,7 +409,7 @@
             }
 
             try {
-                const response = await fetch(`/predict?location_type=${locationType}&location_value=${encodeURIComponent(locationValue)}`);
+                const response = await fetch(`/predict?location_type=${locationType}&location_id=${encodeURIComponent(locationValue)}`);
                 const data = await response.json();
 
                 if (response.ok) {
