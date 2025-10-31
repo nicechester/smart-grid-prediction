@@ -236,17 +236,13 @@ def build_training_data(pipeline: Tier2DataPipeline = None, use_tier2: bool = Tr
 
             # PIVOT weather data from long to wide format
             logger.info("Pivoting weather data from long to wide format...")
-            
-            # Weather data has columns: timestamp, city_id, datatype, value, station, attributes
-            # We need to pivot so each datatype becomes its own column
             weather_pivot = weather_df.pivot_table(
                 index=['timestamp', 'city_id'],
                 columns='datatype',
                 values='value',
-                aggfunc='first'  # Take first value if duplicates
+                aggfunc='first'
             ).reset_index()
             
-            # Flatten column names
             weather_pivot.columns.name = None
             
             # Rename datatype codes to meaningful names
@@ -261,7 +257,7 @@ def build_training_data(pipeline: Tier2DataPipeline = None, use_tier2: bool = Tr
             }
             weather_pivot = weather_pivot.rename(columns=weather_column_mapping)
             
-            # Fill missing weather values with reasonable defaults
+            # Fill missing weather values
             weather_defaults = {
                 'temperature': 20.0,
                 'temp_max': 25.0,
@@ -319,6 +315,89 @@ def build_training_data(pipeline: Tier2DataPipeline = None, use_tier2: bool = Tr
                 logger.info(f"Dropping metadata columns: {cols_to_drop}")
                 df = df.drop(columns=cols_to_drop)
             
+            # Add time features for seasonality
+            logger.info("Adding time and derived features...")
+            df['hour'] = pd.to_datetime(df['timestamp']).dt.hour
+            df['month'] = pd.to_datetime(df['timestamp']).dt.month
+            df['day_of_year'] = pd.to_datetime(df['timestamp']).dt.dayofyear
+            df['day_of_week'] = pd.to_datetime(df['timestamp']).dt.dayofweek
+            df['is_weekend'] = (df['day_of_week'] >= 5).astype(int)
+            
+            # Cyclical encoding
+            df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
+            df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
+            df['month_sin'] = np.sin(2 * np.pi * df['month'] / 12)
+            df['month_cos'] = np.cos(2 * np.pi * df['month'] / 12)
+            df['doy_sin'] = np.sin(2 * np.pi * df['day_of_year'] / 365)
+            df['doy_cos'] = np.cos(2 * np.pi * df['day_of_year'] / 365)
+            df['dow_sin'] = np.sin(2 * np.pi * df['day_of_week'] / 7)
+            df['dow_cos'] = np.cos(2 * np.pi * df['day_of_week'] / 7)
+            
+            # Generate derived grid features (matching app.py)
+            # Cloud cover estimation
+            df['cloud_cover'] = np.clip(0.4 + 0.1 * np.sin(2 * np.pi * df['day_of_year'] / 365), 0, 1)
+            
+            # Solar generation (zero at night, peak at noon)
+            df['solar_mw'] = 0.0
+            daytime = (df['hour'] >= 6) & (df['hour'] <= 18)
+            df.loc[daytime, 'solar_mw'] = (
+                2000 * (1 - df.loc[daytime, 'cloud_cover']) * 
+                np.sin(np.pi * (df.loc[daytime, 'hour'] - 6) / 12)
+            )
+            
+            # Wind generation (from wind_speed)
+            df['wind_mw'] = np.maximum(0, 800 * (df['wind_speed'] / 10))
+            
+            # Demand estimation
+            time_multiplier = np.ones(len(df))
+            morning_peak = df['hour'].isin([6, 7, 8])
+            evening_peak = df['hour'].isin([17, 18, 19, 20])
+            night = (df['hour'] >= 23) | (df['hour'] <= 5)
+            
+            time_multiplier[morning_peak] = 1.3
+            time_multiplier[evening_peak] = 1.4
+            time_multiplier[night] = 0.8
+            
+            base_demand = 20000
+            weekend_factor = np.where(df['is_weekend'], 0.9, 1.0)
+            
+            # df['total_demand'] = base_demand * time_multiplier * weekend_factor
+
+            # --- CORRECTED LOGIC for train.py ---
+            # 1. Convert to Celsius (this is a Series)
+            temp_c = (df['temperature'] - 32) * 5 / 9
+
+            # 2. Define threshold and sensitivity
+            ac_sensitivity_threshold_c = 25.0
+            ac_sensitivity = 0.5 # Default for training
+
+            # 3. Calculate temperature delta
+            temp_delta_c = temp_c - ac_sensitivity_threshold_c
+
+            # 4. Use np.where to calculate ac_demand
+            # if delta > 0, calculate demand, otherwise set to 0.0
+            df['ac_demand'] = np.where(
+                temp_delta_c > 0,  # Condition
+                500 * (temp_delta_c ** 1.5) * ac_sensitivity,  # Value if True
+                0.0  # Value if False
+            )
+
+            # 5. Now calculate total_demand
+            # (Note: make sure 'base_demand', 'time_multiplier', and 'weekend_factor' are defined
+            # as per the surrounding code in train.py)
+            df['total_demand'] = (base_demand + df['ac_demand']) * time_multiplier * weekend_factor
+
+            # --- End of corrected logic ---
+
+            # Grid metrics
+            total_renewable = df['solar_mw'] + df['wind_mw']
+            df['renewable_pct'] = np.clip(total_renewable / df['total_demand'], 0, 1)
+            df['imbalance'] = df['total_demand'] / (total_renewable + 5000)
+            df['grid_stress'] = np.clip(df['total_demand'] / 35000, 0, 1)
+            df['wildfire_risk'] = 0.0
+            
+            logger.info(f"✓ Added grid features (solar_mw, wind_mw, total_demand, etc.)")
+            
             # Fetch power plant data (static aggregated features)
             logger.info("4️⃣  Fetching power plant data...")
             power_plants_df = PowerPlantDB.download_plants()
@@ -334,8 +413,11 @@ def build_training_data(pipeline: Tier2DataPipeline = None, use_tier2: bool = Tr
                 logger.info(f"✓ Added power plant features: Total Capacity={total_capacity:.2f}, Count={plant_count}")
             else:
                 logger.warning("No power plant data available.")
+                df['total_plant_capacity'] = 0
+                df['avg_plant_capacity'] = 0
+                df['plant_count'] = 0
             
-            # Fetch earthquake data with proper date range
+            # Fetch earthquake data
             logger.info("5️⃣  Fetching earthquake data...")
             earthquakes_df = DisasterRisk.get_recent_earthquakes(
                 start_date=start_date,
@@ -344,19 +426,16 @@ def build_training_data(pipeline: Tier2DataPipeline = None, use_tier2: bool = Tr
             )
 
             if earthquakes_df is not None and len(earthquakes_df) > 0:
-                # Aggregate earthquake data as static features
                 quake_count = len(earthquakes_df)
                 avg_magnitude = earthquakes_df['magnitude'].mean()
                 max_magnitude = earthquakes_df['magnitude'].max()
 
-                # Add as static features across all records
                 df['recent_quake_count'] = quake_count
                 df['avg_quake_magnitude'] = avg_magnitude
                 df['max_quake_magnitude'] = max_magnitude
                 logger.info(f"✓ Added earthquake features: Count={quake_count}, Avg Mag={avg_magnitude:.2f}, Max Mag={max_magnitude:.2f}")
             else:
                 logger.warning("No earthquake data available.")
-                # Add default values so feature columns exist
                 df['recent_quake_count'] = 0
                 df['avg_quake_magnitude'] = 0.0
                 df['max_quake_magnitude'] = 0.0
@@ -366,7 +445,7 @@ def build_training_data(pipeline: Tier2DataPipeline = None, use_tier2: bool = Tr
             raise ValueError("Data preparation failed.")
     
     return df
-
+    
 # ============================================
 # Model Training
 # ============================================

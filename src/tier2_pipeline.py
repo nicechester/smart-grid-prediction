@@ -382,7 +382,7 @@ class NOAAWeather:
     def __init__(self):
         """Initialize NOAAWeather class and load stations data."""
         if not hasattr(self, 'stations_df') or self.stations_df is None:
-            self.stations_df = self.get_california_stations()
+            self.stations_df = self.get_california_stations_from_json()
 
     def get_all_california_weather(self, max_workers: int = 5, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> Dict[str, Dict]:
         """Fetch weather for all cities concurrently with optional date range filtering"""
@@ -411,7 +411,8 @@ class NOAAWeather:
         logger.info(f"✓ Successfully fetched weather for {len(results)}/{len(CALIFORNIA_CITIES)} cities")
         return results
 
-    def _fetch_city_weather(self, city_id: str, city_data: Dict) -> Tuple[str, Optional[Dict]]:
+    @staticmethod
+    def _fetch_city_weather(city_id: str, city_data: Dict) -> Tuple[str, Optional[Dict]]:
         """Fetch weather for a single city"""
         logger.info(f"Fetching weather for {city_data['name']}...")
         try:
@@ -463,6 +464,22 @@ class NOAAWeather:
             logger.warning(f"✗ Weather fetch failed for {city_data['name']}: {e}")
             return city_id, None
 
+    @staticmethod
+    def get_california_stations_from_json():
+        """Load NOAA weather stations in California from a local JSON file."""
+        stations_file = 'stations.json'  # Path to the saved stations.json file
+        try:
+            logger.info(f"Loading NOAA weather stations from {stations_file}...")
+            with open(stations_file, 'r') as f:
+                stations_data = json.load(f)
+            return pd.DataFrame(stations_data)
+        except FileNotFoundError:
+            logger.error(f"File {stations_file} not found. Please ensure it exists.")
+            return pd.DataFrame()
+        except Exception as e:
+            logger.error(f"Failed to load stations from {stations_file}: {e}")
+            return pd.DataFrame()
+        
     @staticmethod
     def get_california_stations():
         logger.info("Fetching NOAA weather stations in California...")
@@ -518,12 +535,14 @@ class NOAAWeather:
             row.to_dict() for index, row in self.stations_df.iterrows()
             if city_name.upper() in row['name'].upper()
         ]
+        logger.info(f"Found {len(matching)} stations matching city: {city_name}")
         return pd.DataFrame(matching)
 
     def get_historic_weather(self, city_name: str, start_date: str, end_date: str):
         """Get historic weather data for a city"""
         logger.info(f"Fetching historic weather for {city_name} from {start_date} to {end_date}...")
         station_ids = self.search_stations_by_city(city_name)['id'].tolist()
+        logger.info(f"Using stations: {station_ids}")
 
         headers = {'token': os.getenv('NCEI_TOKEN')}
         params = {
@@ -535,7 +554,8 @@ class NOAAWeather:
             'limit': 1000,
             'offset': 0
         }
-
+        logger.info(f"request url: {NCEI_API_BASE_URL}/data")
+        logger.info(f"request params: {params}")
         response = requests.get(
             f"{NCEI_API_BASE_URL}/data",
             headers=headers,
@@ -545,6 +565,7 @@ class NOAAWeather:
         if response.status_code != 200:
             raise ValueError(f"Error: API request failed with status code {response.status_code}")
 
+        logger.info(f"✓ Historic weather data fetched for {city_name}")
         return response.json()
 
 

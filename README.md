@@ -816,17 +816,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Contact
 
-- **Project Link**: https://github.com/yourusername/smart-grid-ml
-- **Issues**: https://github.com/yourusername/smart-grid-ml/issues
-- **Email**: your.email@example.com
+- **Project Link**: https://github.com/nicechester/smart-grid-prediction
+- **Issues**: https://github.com/nicechester/smart-grid-prediction/issues
 
 ---
 
 ## 📊 Project Stats
 
-![GitHub stars](https://img.shields.io/github/stars/yourusername/smart-grid-ml)
-![GitHub forks](https://img.shields.io/github/forks/yourusername/smart-grid-ml)
-![GitHub issues](https://img.shields.io/github/issues/yourusername/smart-grid-ml)
+![GitHub stars](https://img.shields.io/github/stars/nicechester/smart-grid-prediction)
+![GitHub forks](https://img.shields.io/github/forks/nicechester/smart-grid-prediction)
+![GitHub issues](https://img.shields.io/github/issues/nicechester/smart-grid-prediction)
 
 ---
 

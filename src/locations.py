@@ -319,7 +319,14 @@ DEMAND_PROFILES = {
 
 def get_region(region_id: str) -> Optional[Dict]:
     """Get region by ID"""
-    return CAISO_REGIONS.get(region_id)
+    for rid, region in CAISO_REGIONS.items():
+        region_id_lower = region_id.lower().strip()
+        if rid.lower() == region_id_lower or region['name'].lower() == region_id_lower:
+            logger.info(f"Found region: {region['name']}")
+            region['id'] = rid  # Add canonical ID
+            return region
+    logger.warning(f"Region not found: {region_id_lower}")
+    return None
 
 def get_city(city_id: str) -> Optional[Dict]:
     """Get city by ID or name (case-insensitive)"""
@@ -338,6 +345,8 @@ def get_county(county_id: str) -> Optional[Dict]:
     county_id_lower = county_id.lower().strip()
     for cid, county in CALIFORNIA_COUNTIES.items():
         if cid.lower() == county_id_lower or county['name'].lower() == county_id_lower:
+            logger.info(f"Found county: {county['name']}")
+            county['id'] = cid  # Add canonical ID
             return county
     return None
 
