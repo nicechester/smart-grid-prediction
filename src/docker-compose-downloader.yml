@@ -1,0 +1,17 @@
+services:
+  downloader:
+    build: .
+    container_name: smart_grid_downloader
+    
+    env_file:
+      - .env
+    
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+    
+    # Download 3 months of data by default
+    command: python download_data.py --date-range-months 3
+    
+    # Don't restart after download completes
+    restart: "no"

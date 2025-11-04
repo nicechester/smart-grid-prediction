@@ -1,6 +1,5 @@
-services:
-
-  # Training service - trains the model
+services:    
+  # Training service - trains the model using downloaded data
   trainer:
     build: .
     container_name: smart_grid_trainer
@@ -11,9 +10,9 @@ services:
     volumes:
       - ./src:/app/src
       - ./data:/app/data
-    
-    # Run training once at startup
-    command: python train.py --date-range-months 12
+        
+    # Train using data from /app/data/downloads
+    command: python train.py --epochs 50 --batch-size 32
     
     # Don't restart after training completes
     restart: "no"
@@ -33,7 +32,7 @@ services:
     ports:
       - "8000:8000"
     
-    # depends_on:
-    #   - trainer
-
     command: python -u app.py
+    
+    # Keep app running
+    restart: unless-stopped
