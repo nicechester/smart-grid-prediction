@@ -351,12 +351,6 @@
             </div>
 
             <div class="source-item">
-                <div class="source-label">Transmission Lines</div>
-                <div class="source-value" id="lines-count">-</div>
-                <div class="source-status" id="lines-status">Loading...</div>
-            </div>
-
-            <div class="source-item">
                 <div class="source-label">Price Records</div>
                 <div class="source-value" id="prices-count">-</div>
                 <div class="source-status" id="prices-status">Loading...</div>
@@ -364,7 +358,7 @@
 
             <div class="source-item">
                 <div class="source-label">Weather Data</div>
-                <div class="source-value" id="weather-value">-</div>
+                <div class="source-value" id="weather-count">-</div>
                 <div class="source-status" id="weather-status">Loading...</div>
             </div>
 
@@ -447,9 +441,8 @@
 
                 if (response.ok) {
                     updateDataSource('plants', data.power_plants);
-                    updateDataSource('lines', data.transmission_lines);
-                    updateDataSource('prices', data.prices);
-                    updateDataSource('weather', data.weather);
+                    updateDataSource('weather', data.weather_by_city);
+                    updateDataSource('prices', data.caiso_prices_by_city);
                     updateDataSource('earthquakes', data.earthquakes);
                     document.getElementById('error-message').style.display = 'none';
                 } else {
@@ -469,12 +462,6 @@
                     data.available ? '✓ Available' : '✗ Unavailable';
                 document.getElementById(`${name}-status`).className = 
                     data.available ? 'source-status' : 'source-status error';
-            } else if (typeof data === 'object') {
-                if (data.temperature !== undefined) {
-                    document.getElementById('weather-value').textContent = 
-                        data.temperature.toFixed(1) + '°C';
-                    document.getElementById('weather-status').textContent = '✓ Available';
-                }
             }
         }
 

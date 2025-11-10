@@ -11,7 +11,7 @@ services:
       - ./data:/app/data
     
     # Download 3 months of data by default
-    command: python download_data.py --date-range-months 3
+    command: python download_data.py --date-range-months 36
     
     # Don't restart after download completes
     restart: "no"

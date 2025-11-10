@@ -15,6 +15,7 @@ import pandas as pd
 
 from main import Config, PricePredictor
 from tier2_pipeline import Tier2DataPipeline, PowerPlantDB, NOAAWeather, CAISOPriceFetcher
+from data_loader import load_downloaded_data
 from locations import (
     CALIFORNIA_CITIES, CALIFORNIA_COUNTIES, CAISO_REGIONS,
     get_city, get_county, get_region,
@@ -578,6 +579,55 @@ def get_model_info():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ============================================
+# ROUTES - TIER 2 DATA
+# ============================================
+
+@app.route('/tier2-data')
+def get_tier2_data():
+    """Fetch Tier 2 data from pre-downloaded files"""
+    global tier2_data_cache
+    try:
+        if tier2_data_cache is None:
+            logger.info("Tier 2 data cache is empty. Loading from saved files...")
+            tier2_data_cache = load_downloaded_data(Config.DATA_DIR + '/downloads')
+
+        data = tier2_data_cache
+        response = {
+            'power_plants': {
+                'count': len(data['plants']) if data.get('plants') is not None else 0,
+                'available': data.get('plants') is not None
+            },
+            'weather_by_city': {
+                'count': len(data['weather']) if data.get('weather') is not None else 0,
+                'available': data.get('weather') is not None
+            },
+            'caiso_prices_by_city': {
+                'count': len(data['caiso']) if data.get('caiso') is not None else 0,
+                'available': data.get('caiso') is not None
+            },
+            'earthquakes': {
+                'count': len(data['earthquakes']) if data.get('earthquakes') is not None else 0,
+                'available': data.get('earthquakes') is not None
+            }
+        }
+        return jsonify(response)
+    except Exception as e:
+        logger.error(f"Error in /tier2-data: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    
+@app.route('/tier2-data/refresh', methods=['POST'])
+def refresh_tier2_data():
+    """Force refresh Tier 2 data cache"""
+    global tier2_data_cache
+    try:
+        logger.info("Refreshing Tier 2 data cache...")
+        tier2_data_cache = load_downloaded_data(Config.DATA_DIR + '/downloads')
+        return jsonify({'status': 'cache refreshed', 'message': 'Tier 2 data cache has been reloaded from saved files'})
+    except Exception as e:
+        logger.error(f"Error in /tier2-data/refresh: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    
 # ============================================
 # MAIN
 # ============================================

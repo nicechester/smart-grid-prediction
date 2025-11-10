@@ -21,6 +21,7 @@ from sklearn.preprocessing import StandardScaler
 # Import from main modules
 from main import Config, PricePredictor
 from locations import DEMAND_PROFILES
+from data_loader import load_downloaded_data
 
 # Setup logging - create directory first
 os.makedirs('/app/data/training', exist_ok=True)
@@ -131,6 +132,7 @@ class TrainingConfig:
     VALIDATION_SPLIT = 0.2
     RANDOM_STATE = 42
     DATA_DIR = '/app/data/downloads'  # Where downloaded data is stored
+    MAX_DATE_RANGE_MONTHS = 6  # Limit to avoid data quality issues
 
 # ============================================
 # Data Loading Functions
@@ -480,6 +482,17 @@ def train_model(df, epochs=None, batch_size=None):
         if feature not in df.columns:
             logger.warning(f"Feature '{feature}' missing. Adding with default value 0.0")
             df[feature] = 0.0
+        elif df[feature].isna().all():
+            # CRITICAL: If feature has ALL NaN values, fill with 0
+            logger.warning(f"Feature '{feature}' has all NaN values. Filling with 0.0")
+            df[feature] = 0.0
+        elif df[feature].isna().any():
+            # If feature has SOME NaN values, fill with median
+            median_val = df[feature].median()
+            if pd.isna(median_val):
+                median_val = 0.0
+            logger.warning(f"Feature '{feature}' has {df[feature].isna().sum()} NaN values. Filling with median: {median_val:.2f}")
+            df[feature].fillna(median_val, inplace=True)
     
     # Select ONLY the features we want
     feature_cols = all_features
@@ -491,20 +504,48 @@ def train_model(df, epochs=None, batch_size=None):
     feature_stats = {}
     for col in feature_cols:
         if col in df.columns:
-            feature_stats[col] = {
-                'mean': float(df[col].mean()),
-                'std': float(df[col].std()),
-                'min': float(df[col].min()),
-                'max': float(df[col].max()),
-                'median': float(df[col].median())
-            }
+            col_data = df[col].replace([np.inf, -np.inf], np.nan).dropna()
+            
+            if len(col_data) == 0:
+                logger.warning(f"Feature '{col}' has no valid data. Using default stats.")
+                feature_stats[col] = {
+                    'mean': 0.0,
+                    'std': 1.0,
+                    'min': 0.0,
+                    'max': 0.0,
+                    'median': 0.0
+                }
+            else:
+                feature_stats[col] = {
+                    'mean': float(col_data.mean()),
+                    'std': float(col_data.std() if col_data.std() > 0 else 1.0),
+                    'min': float(col_data.min()),
+                    'max': float(col_data.max()),
+                    'median': float(col_data.median())
+                }
     
     # Log key statistics for debugging
     logger.info("Key feature statistics:")
     for key_feat in ['temperature', 'total_demand', 'price', 'solar_mw', 'wind_mw']:
         if key_feat in feature_stats:
             stats = feature_stats[key_feat]
-            logger.info(f"  {key_feat}: min={stats['min']:.2f}, max={stats['max']:.2f}, mean={stats['mean']:.2f}")
+            logger.info(f"  {key_feat}: min={stats['min']:.2f}, max={stats['max']:.2f}, mean={stats['mean']:.2f}, std={stats['std']:.2f}")
+    
+    # CRITICAL: Check for any remaining NaN or inf values
+    logger.info("4. Validating data integrity...")
+    nan_cols = df[feature_cols].columns[df[feature_cols].isna().any()].tolist()
+    if nan_cols:
+        logger.error(f"Features still have NaN values: {nan_cols}")
+        for col in nan_cols:
+            df[col].fillna(0.0, inplace=True)
+        logger.warning("Filled remaining NaN values with 0.0")
+    
+    inf_cols = df[feature_cols].columns[np.isinf(df[feature_cols]).any()].tolist()
+    if inf_cols:
+        logger.error(f"Features have infinite values: {inf_cols}")
+        for col in inf_cols:
+            df[col].replace([np.inf, -np.inf], 0.0, inplace=True)
+        logger.warning("Replaced infinite values with 0.0")
     
     # Save feature statistics
     stats_path = os.path.join(Config.MODEL_DIR, 'feature_stats.json')
@@ -519,9 +560,23 @@ def train_model(df, epochs=None, batch_size=None):
         raise ValueError(f"Non-numeric features: {non_numeric.tolist()}")
     
     # Prepare data
-    logger.info("4. Preparing data...")
+    logger.info("5. Preparing data...")
     X = df[feature_cols].values
     y = df['price'].values
+    
+    # Final validation
+    if np.isnan(X).any():
+        logger.error(f"X still contains {np.isnan(X).sum()} NaN values!")
+        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+        logger.warning("Replaced NaN/inf in X with 0.0")
+    
+    if np.isnan(y).any():
+        logger.error(f"y still contains {np.isnan(y).sum()} NaN values!")
+        # Remove rows where price is NaN
+        valid_mask = ~np.isnan(y)
+        X = X[valid_mask]
+        y = y[valid_mask]
+        logger.warning(f"Removed {(~valid_mask).sum()} rows with NaN prices")
     
     logger.info(f"✅ X shape: {X.shape}")
     logger.info(f"✅ y range: ${y.min():.2f} - ${y.max():.2f}/MWh")
@@ -535,12 +590,12 @@ def train_model(df, epochs=None, batch_size=None):
     logger.info(f"✅ Training: {X_train.shape[0]}, Testing: {X_test.shape[0]}")
     
     # Build model
-    logger.info("5. Building neural network...")
+    logger.info("6. Building neural network...")
     predictor = PricePredictor(X_train.shape[1])
     model = predictor.build_model()
     
     # Train
-    logger.info(f"6. Training ({epochs} epochs)...")
+    logger.info(f"7. Training ({epochs} epochs)...")
     history = predictor.train(
         X_train, y_train,
         epochs=epochs,
@@ -550,7 +605,7 @@ def train_model(df, epochs=None, batch_size=None):
     logger.info("✅ Training complete")
     
     # Evaluate
-    logger.info("7. Evaluating model...")
+    logger.info("8. Evaluating model...")
     metrics = predictor.evaluate(X_test, y_test)
     logger.info(f"✅ Test MAE: ${metrics['mae']:.2f}/MWh")
     logger.info(f"✅ Test RMSE: ${metrics['rmse']:.2f}/MWh")
@@ -559,7 +614,7 @@ def train_model(df, epochs=None, batch_size=None):
     logger.info(f"✅ Test R²: {metrics['r2']:.4f}")
     
     # Save model
-    logger.info("8. Saving model...")
+    logger.info("9. Saving model...")
     predictor.feature_names = feature_cols
     predictor.save(
         os.path.join(Config.MODEL_DIR, 'price_model.keras'),
@@ -586,7 +641,10 @@ def train_model(df, epochs=None, batch_size=None):
         'metrics': {
             'loss': float(metrics['loss']),
             'mae': float(metrics['mae']),
-            'mape': float(metrics['mape'])
+            'mape': float(metrics['mape']),
+            'smape': float(metrics['smape']),
+            'rmse': float(metrics['rmse']),
+            'r2': float(metrics['r2'])
         },
         'version': '2.4.0-demand-profile-fix'
     }
@@ -645,7 +703,10 @@ def main():
         logger.info("TRAINING COMPLETE ✅")
         logger.info("=" * 70)
         logger.info(f"Test MAE: ${metrics['mae']:.2f}/MWh")
-        logger.info(f"Test MAPE: {metrics['mape']:.2f}%")
+        logger.info(f"Test RMSE: ${metrics['rmse']:.2f}/MWh")
+        logger.info(f"Test MAPE: {metrics['mape']:.2f}% (prices > $5)")
+        logger.info(f"Test SMAPE: {metrics['smape']:.2f}% (symmetric)")
+        logger.info(f"Test R²: {metrics['r2']:.4f}")
         logger.info(f"Feature statistics saved for {len(TRAINING_FEATURES) + len(NOAA_UNMAPPED_DATATYPES)} features")
         logger.info("")
         

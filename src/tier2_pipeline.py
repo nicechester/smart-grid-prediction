@@ -26,6 +26,7 @@ from locations import (
     CALIFORNIA_CITIES, CALIFORNIA_COUNTIES, CAISO_REGIONS,
     get_city, get_county, list_all_cities
 )
+from data_loader import load_downloaded_data
 
 load_dotenv()
 
@@ -385,28 +386,35 @@ class NOAAWeather:
             self.stations_df = self.get_california_stations_from_json()
 
     def get_all_california_weather(self, max_workers: int = 5, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> Dict[str, Dict]:
-        """Fetch weather for all cities concurrently with optional date range filtering"""
+        """Fetch weather for all cities concurrently with pagination for up to 12 months chunks."""
         logger.info("=" * 70)
-        logger.info("FETCHING WEATHER FOR ALL CALIFORNIA CITIES")
+        logger.info("FETCHING WEATHER FOR ALL CALIFORNIA CITIES WITH PAGINATION")
         logger.info("=" * 70)
 
         results = {}
+        current_start = start_date
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_city = {
-                executor.submit(self.get_historic_weather, city_data['name'], start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')): city_id
-                for city_id, city_data in CALIFORNIA_CITIES.items()
-            }
+        while current_start < end_date:
+            current_end = min(current_start + timedelta(days=365), end_date)
+            logger.info(f"Fetching weather data from {current_start} to {current_end}")
 
-            for future in as_completed(future_to_city):
-                city_id = future_to_city[future]
-                try:
-                    weather_data = future.result()
-                    if weather_data:
-                        results[city_id] = weather_data
-                    time.sleep(Tier2Config.RATE_LIMIT_DELAY)
-                except Exception as e:
-                    logger.error(f"Error processing {city_id}: {e}")
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_city = {
+                    executor.submit(self.get_historic_weather, city_data['name'], current_start.strftime('%Y-%m-%d'), current_end.strftime('%Y-%m-%d')): city_id
+                    for city_id, city_data in CALIFORNIA_CITIES.items()
+                }
+
+                for future in as_completed(future_to_city):
+                    city_id = future_to_city[future]
+                    try:
+                        weather_data = future.result()
+                        if weather_data:
+                            results[city_id] = weather_data
+                        time.sleep(Tier2Config.RATE_LIMIT_DELAY)
+                    except Exception as e:
+                        logger.error(f"Error processing {city_id}: {e}")
+
+            current_start = current_end + timedelta(days=1)
 
         logger.info(f"✓ Successfully fetched weather for {len(results)}/{len(CALIFORNIA_CITIES)} cities")
         return results
@@ -636,71 +644,18 @@ class Tier2DataPipeline:
     
     def build_complete_dataset(self, use_concurrent: bool = True, 
                               start_date: str = None, 
-                              end_date: str = None) -> Dict:
+                              end_date: str = None) -> dict:
         """Build complete Tier 2 dataset with CAISO prices"""
         logger.info("=" * 70)
-        logger.info("TIER 2 DATA PIPELINE - CAISO OASIS ENABLED")
+        logger.info("TIER 2 DATA PIPELINE - LOADING SAVED DATA")
         logger.info("=" * 70)
         logger.info("")
-        
-        # Default dates: last 7 days
-        if start_date is None:
-            start_date = (datetime.now() - timedelta(days=7)).strftime('%Y%m%d')
-        if end_date is None:
-            end_date = datetime.now().strftime('%Y%m%d')
-        
-        data = {}
-        
-        # 1. CAISO Prices
-        logger.info("1️⃣  Fetching CAISO LMP prices (all cities)...")
-        if use_concurrent:
-            caiso_prices = CAISOPriceFetcher.fetch_all_cities_prices(
-                start_date, end_date, market='DAM', max_workers=5
-            )
-            self._prices_cache = caiso_prices
-            data['caiso_prices_by_city'] = caiso_prices
-            
-            if caiso_prices:
-                total_records = sum(len(df) for df in caiso_prices.values())
-                logger.info(f"  ✓ {len(caiso_prices)} cities, {total_records} total records")
-        else:
-            logger.info("  ⊘ Skipping CAISO (use_concurrent=False)")
-            data['caiso_prices_by_city'] = {}
-        logger.info("")
-        
-        # 2. Power Plants
-        logger.info("2️⃣  Fetching power plants...")
-        plants_df = PowerPlantDB.download_plants()
-        self._plants_cache = plants_df
-        data['power_plants'] = plants_df
-        
-        if plants_df is not None:
-            logger.info(f"  ✓ {len(plants_df)} CA plants")
-        logger.info("")
-        
-        # 3. Weather
-        logger.info("3️⃣  Fetching weather...")
-        if use_concurrent:
-            weather_data = NOAAWeather.get_all_california_weather(max_workers=5)
-            self._weather_cache = weather_data
-            data['weather_by_city'] = weather_data
-            logger.info(f"  ✓ {len(weather_data)} cities")
-        else:
-            data['weather_by_city'] = {}
-        logger.info("")
-        
-        # 4. Earthquakes
-        logger.info("4️⃣  Fetching seismic data...")
-        earthquakes = DisasterRisk.get_recent_earthquakes()
-        data['earthquakes'] = earthquakes
-        
-        if earthquakes is not None:
-            logger.info(f"  ✓ {len(earthquakes)} recent earthquakes")
-        logger.info("")
-        
+
+        # Load all saved data
+        data = load_downloaded_data(Tier2Config.CACHE_DIR)
+
         logger.info("✅ Tier 2 pipeline complete!")
         logger.info("")
-        
         return data
 
 

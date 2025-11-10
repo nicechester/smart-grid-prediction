@@ -27,10 +27,13 @@ RUN mkdir -p /app/src /app/data/downloads /app/data/training /app/data/models /a
 COPY src/ /app/src/
 COPY templates/ /app/templates/
 
+# Copy model and data files
+COPY data/ /app/data/
+
 # Set working directory to src for Python imports
 WORKDIR /app/src
 
 # Expose the port the app runs on
 EXPOSE 8000
 
-# No CMD here - docker-compose.yml specifies commands per service
+CMD ["python", "-u", "app.py"]

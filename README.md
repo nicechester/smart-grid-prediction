@@ -43,6 +43,12 @@ Smart Grid ML predicts electricity prices for California's power grid (CAISO) us
 
 ---
 
+## 📖 Repository
+
+- **GitHub Repository**: [Smart Grid Prediction](https://github.com/nicechester/smart-grid-prediction)
+
+---
+
 ## ✨ Features
 
 ### Core Features
@@ -173,7 +179,7 @@ PricePredictor.predict() → JSON Response
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/smart-grid-ml.git
+git clone https://github.com/nicechester/smart-grid-prediction.git
 cd smart-grid-ml
 
 # Create virtual environment
@@ -199,7 +205,7 @@ python app.py
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/smart-grid-ml.git
+git clone https://github.com/nicechester/smart-grid-prediction.git
 cd smart-grid-ml
 
 # Create .env file
@@ -315,7 +321,7 @@ smart-grid-ml/
 ├── .env                   # Environment variables (API keys)
 │
 ├── models/                # Trained models (generated)
-│   ├── price_model.h5     # Keras model
+│   ├── price_model.keras     # Keras model
 │   ├── scaler.pkl         # Feature scaler
 │   ├── features.json      # Feature names
 │   └── training_metadata.json
@@ -488,7 +494,7 @@ python train.py --help
 After training:
 ```
 models/
-├── price_model.h5           # Keras model
+├── price_model.keras        # Keras model
 ├── scaler.pkl               # StandardScaler
 ├── features.json            # Feature names list
 └── training_metadata.json   # Training info + metrics
@@ -592,7 +598,7 @@ curl http://localhost:8000/health
 
 ```bash
 # Clone repo
-git clone https://github.com/yourusername/smart-grid-ml.git
+git clone https://github.com/nicechester/smart-grid-prediction.git
 cd smart-grid-ml
 
 # Create venv
