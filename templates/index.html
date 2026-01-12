@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Grid - Electricity Price Predictor</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;600;700&display=swap');
+
+        :root {
+            --bg-dark: #0a0f1c;
+            --bg-card: #111827;
+            --bg-card-hover: #1a2235;
+            --accent-cyan: #06b6d4;
+            --accent-emerald: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-rose: #f43f5e;
+            --accent-violet: #8b5cf6;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-subtle: rgba(148, 163, 184, 0.1);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,517 +28,881 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-dark);
             min-height: 100vh;
-            padding: 20px;
+            color: var(--text-primary);
         }
 
-        .container {
-            max-width: 1200px;
+        /* Header */
+        .header {
+            background: linear-gradient(180deg, rgba(6, 182, 212, 0.1) 0%, transparent 100%);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 20px 30px;
+        }
+
+        .header-content {
+            max-width: 1600px;
             margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
-        header {
-            text-align: center;
-            color: white;
-            margin-bottom: 40px;
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
-        header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-
-        header p {
-            font-size: 1.1em;
-            opacity: 0.9;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .card {
-            background: white;
+        .logo-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald));
             border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
         }
 
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+        .logo-text h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
-        .card h2 {
-            font-size: 0.9em;
-            color: #667eea;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 15px;
+        .logo-text p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
         }
 
-        .card-value {
-            font-size: 2.5em;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 10px;
-        }
-
-        .card-subtitle {
-            font-size: 0.95em;
-            color: #666;
-        }
-
-        .price-card {
-            position: relative;
-            overflow: hidden;
-        }
-
-        .price-badge {
-            display: inline-block;
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             padding: 8px 16px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
             border-radius: 20px;
-            font-size: 0.85em;
-            font-weight: 600;
-            margin-top: 15px;
+            font-size: 0.85rem;
+            color: var(--accent-emerald);
         }
 
-        .badge-low {
-            background: #10b981;
-            color: white;
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
         }
 
-        .badge-medium {
-            background: #f59e0b;
-            color: white;
+        .logout-btn {
+            padding: 8px 16px;
+            background: transparent;
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            font-family: 'Outfit', sans-serif;
         }
 
-        .badge-high {
-            background: #ef4444;
-            color: white;
+        .logout-btn:hover {
+            background: rgba(244, 63, 94, 0.1);
+            border-color: rgba(244, 63, 94, 0.3);
+            color: var(--accent-rose);
         }
 
-        .badge-critical {
-            background: #991b1b;
-            color: white;
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-emerald);
+            border-radius: 50%;
             animation: pulse 2s infinite;
         }
 
         @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.9); }
+        }
+
+        /* Main Layout */
+        .main-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+        }
+
+        /* Map Section */
+        .map-section {
+            background: var(--bg-card);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .search-container {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .search-box {
+            position: relative;
+            display: flex;
+            gap: 12px;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 14px 20px 14px 48px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            font-size: 1rem;
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .search-btn {
+            padding: 14px 24px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(6, 182, 212, 0.3);
+        }
+
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+
+        .map-legend {
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            font-size: 0.85rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+        }
+
+        .legend-marker {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-marker.selected { background: var(--accent-cyan); }
+        .legend-marker.node { background: var(--accent-amber); }
+        .legend-marker.load { background: var(--accent-violet); }
+
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(6, 182, 212, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .card-icon {
+            width: 36px;
+            height: 36px;
+            background: rgba(6, 182, 212, 0.1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .card-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+        }
+
+        /* Price Display */
+        .price-display {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .price-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 3.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1;
+        }
+
+        .price-unit {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+
+        .price-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-top: 16px;
+        }
+
+        .badge-low {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-emerald);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-medium {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--accent-amber);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .badge-high {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--accent-rose);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        .badge-critical {
+            background: rgba(244, 63, 94, 0.25);
+            color: var(--accent-rose);
+            border: 1px solid rgba(244, 63, 94, 0.5);
+            animation: pulse-badge 2s infinite;
+        }
+
+        @keyframes pulse-badge {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.7; }
         }
 
-        .data-sources {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.95);
+        /* Location Info */
+        .location-info {
+            background: rgba(0, 0, 0, 0.2);
             border-radius: 12px;
-            margin-top: 30px;
+            padding: 16px;
+            margin-top: 16px;
         }
 
-        .source-item {
-            padding: 15px;
-            background: #f3f4f6;
-            border-radius: 8px;
-            text-align: center;
+        .location-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-subtle);
         }
 
-        .source-label {
-            font-size: 0.85em;
-            color: #666;
+        .location-row:last-child {
+            border-bottom: none;
+        }
+
+        .location-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .location-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        /* Node Info Card */
+        .node-info {
+            font-size: 0.9rem;
+        }
+
+        .node-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            color: var(--accent-cyan);
             margin-bottom: 8px;
         }
 
-        .source-value {
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #333;
-        }
-
-        .source-status {
-            font-size: 0.8em;
-            color: #10b981;
-            margin-top: 5px;
-        }
-
-        .source-status.error {
-            color: #ef4444;
-        }
-
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-        }
-
-        button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1em;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            background: white;
-            color: #667eea;
-        }
-
-        button:hover {
-            background: #f3f4f6;
-        }
-
-        button:active {
-            transform: scale(0.98);
-        }
-
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #5568d3;
-        }
-
-        .status-bar {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 15px 20px;
-            border-radius: 8px;
+        .node-detail {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            padding: 6px 0;
+            color: var(--text-secondary);
+        }
+
+        .node-detail span:last-child {
+            color: var(--text-primary);
+        }
+
+        /* Error Message */
+        .error-message {
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+            color: var(--accent-rose);
+            padding: 16px;
+            border-radius: 12px;
+            display: none;
             margin-bottom: 20px;
         }
 
-        .status-text {
-            font-size: 0.9em;
-            color: #666;
+        /* Loading */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(10, 15, 28, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            display: none;
         }
 
-        .status-indicator {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #10b981;
-            animation: blink 2s infinite;
-        }
-
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f4f6;
-            border-top: 3px solid #667eea;
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-subtle);
+            border-top-color: var(--accent-cyan);
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            to { transform: rotate(360deg); }
         }
 
-        .error-message {
-            background: #fee2e2;
-            color: #991b1b;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        footer {
+        /* Instructions */
+        .instructions {
             text-align: center;
-            color: white;
-            margin-top: 50px;
-            font-size: 0.9em;
-            opacity: 0.8;
+            padding: 40px 20px;
+            color: var(--text-secondary);
         }
 
-        .location-dropdown {
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 1em;
-            flex: 1;
+        .instructions-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            opacity: 0.5;
         }
 
-        #location-input {
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 1em;
-            display: none;
-            flex: 2;
-        }
-
-        @media (max-width: 768px) {
-            header h1 {
-                font-size: 1.8em;
-            }
-
-            .grid {
+        /* Responsive */
+        @media (max-width: 1100px) {
+            .main-container {
                 grid-template-columns: 1fr;
             }
+        }
 
-            .card-value {
-                font-size: 2em;
-            }
-
-            .controls {
+        @media (max-width: 600px) {
+            .header-content {
                 flex-direction: column;
                 gap: 15px;
             }
+
+            .main-container {
+                padding: 15px;
+            }
+
+            .price-value {
+                font-size: 2.5rem;
+            }
+        }
+
+        /* Google Places Autocomplete Styling */
+        .pac-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            margin-top: 8px;
+            font-family: 'Outfit', sans-serif;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .pac-item {
+            padding: 12px 16px;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-subtle);
+            cursor: pointer;
+        }
+
+        .pac-item:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .pac-item-query {
+            color: var(--accent-cyan);
+        }
+
+        .pac-matched {
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>⚡ Smart Grid</h1>
-            <p>Real-time Electricity Price Prediction</p>
-        </header>
-
-        <div class="status-bar">
-            <span class="status-text" id="status">Initializing...</span>
-            <div class="status-indicator"></div>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">⚡</div>
+                <div class="logo-text">
+                    <h1>Smart Grid</h1>
+                    <p>California Electricity Price Prediction</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="status-badge" id="status-badge">
+                    <div class="status-dot"></div>
+                    <span id="status-text">Initializing...</span>
+                </div>
+                <a href="/logout" class="logout-btn">Logout</a>
+            </div>
         </div>
+    </header>
 
-        <div class="error-message" id="error-message"></div>
+    <main class="main-container">
+        <section class="map-section">
+            <div class="search-container">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input 
+                        type="text" 
+                        id="location-search" 
+                        class="search-input" 
+                        placeholder="Search any California address, city, or place..."
+                    >
+                    <button class="search-btn" onclick="useCurrentLocation()">📍 My Location</button>
+                </div>
+            </div>
+            <div id="map"></div>
+            <div class="map-legend">
+                <div class="legend-item">
+                    <div class="legend-marker selected"></div>
+                    <span>Selected Location</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-marker node"></div>
+                    <span>CAISO Price Node</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-marker load"></div>
+                    <span>Load Node</span>
+                </div>
+                <div class="legend-item" style="margin-left: auto; color: var(--text-primary);">
+                    💡 Click anywhere on the map to get a price prediction
+                </div>
+            </div>
+        </section>
 
-        <div class="controls">
-            <select id="location-select" class="location-dropdown">
-                <option value="">Select Location</option>
-                <option value="city">City</option>
-                <option value="county">County</option>
-            </select>
-            <input type="text" id="location-input" placeholder="Enter city or county" style="display: none;">
-            <button class="btn-primary" onclick="getPrediction()">
-                <span id="predict-btn">Get Prediction</span>
-            </button>
-            <button onclick="getTier2Data()">Data Sources</button>
-            <button onclick="getModelInfo()">Model Info</button>
-            <button onclick="autoRefresh()">Auto Refresh</button>
-        </div>
+        <aside class="sidebar">
+            <div class="error-message" id="error-message"></div>
 
-        <div class="grid">
-            <div class="card price-card">
-                <h2>Predicted Price</h2>
-                <div class="card-value" id="price-value">--</div>
-                <div class="card-subtitle">$/MWh</div>
-                <div id="price-level"></div>
-                <div class="card-subtitle" id="price-time" style="margin-top: 15px; font-size: 0.85em;">--</div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">💰</div>
+                    <span class="card-title">Predicted Price</span>
+                </div>
+                <div class="price-display">
+                    <div class="price-value" id="price-value">--</div>
+                    <div class="price-unit">$/MWh</div>
+                    <div id="price-badge"></div>
+                </div>
+                <div class="location-info" id="location-info" style="display: none;">
+                    <div class="location-row">
+                        <span class="location-label">Latitude</span>
+                        <span class="location-value" id="lat-value">--</span>
+                    </div>
+                    <div class="location-row">
+                        <span class="location-label">Longitude</span>
+                        <span class="location-value" id="lng-value">--</span>
+                    </div>
+                    <div class="location-row">
+                        <span class="location-label">Prediction Time</span>
+                        <span class="location-value" id="time-value">--</span>
+                    </div>
+                </div>
             </div>
 
             <div class="card">
-                <h2>Price Level</h2>
-                <div class="card-value" id="level-value">--</div>
-                <div class="card-subtitle" id="level-description">--</div>
+                <div class="card-header">
+                    <div class="card-icon">🔌</div>
+                    <span class="card-title">Nearest Price Node</span>
+                </div>
+                <div id="node-info">
+                    <div class="instructions">
+                        <div class="instructions-icon">📍</div>
+                        <p>Select a location on the map or search for an address to see the nearest CAISO pricing node</p>
+                    </div>
+                </div>
             </div>
 
             <div class="card">
-                <h2>Confidence</h2>
-                <div class="card-value" id="confidence-value">--</div>
-                <div class="card-subtitle">Model reliability ($)</div>
+                <div class="card-header">
+                    <div class="card-icon">📊</div>
+                    <span class="card-title">Price Level</span>
+                </div>
+                <div class="node-info">
+                    <div class="node-detail">
+                        <span>Level</span>
+                        <span id="level-value">--</span>
+                    </div>
+                    <div class="node-detail">
+                        <span>Description</span>
+                        <span id="level-desc">--</span>
+                    </div>
+                    <div class="node-detail">
+                        <span>Confidence</span>
+                        <span id="confidence-value">--</span>
+                    </div>
+                </div>
             </div>
-        </div>
-
-        <div class="data-sources" id="data-sources-container" style="display: none;">
-            <h2 style="grid-column: 1/-1; color: #333;">Data Sources Status</h2>
-            <div class="source-item">
-                <div class="source-label">Power Plants</div>
-                <div class="source-value" id="plants-count">-</div>
-                <div class="source-status" id="plants-status">Loading...</div>
-            </div>
-
-            <div class="source-item">
-                <div class="source-label">Price Records</div>
-                <div class="source-value" id="prices-count">-</div>
-                <div class="source-status" id="prices-status">Loading...</div>
-            </div>
-
-            <div class="source-item">
-                <div class="source-label">Weather Data</div>
-                <div class="source-value" id="weather-count">-</div>
-                <div class="source-status" id="weather-status">Loading...</div>
-            </div>
-
-            <div class="source-item">
-                <div class="source-label">Recent Earthquakes</div>
-                <div class="source-value" id="earthquakes-count">-</div>
-                <div class="source-status" id="earthquakes-status">Loading...</div>
-            </div>
-        </div>
-
-        <footer>
-            <p>Smart Grid ML - Electricity Price Forecasting System</p>
-            <p style="margin-top: 10px; opacity: 0.7;">Data sources: CAISO, NOAA, EIA, NASA FIRMS, USGS</p>
-        </footer>
-    </div>
+        </aside>
+    </main>
 
     <script>
-        let autoRefreshInterval = null;
+        let map;
+        let selectedMarker = null;
+        let nodeMarkers = [];
+        let autocomplete;
 
-        document.getElementById('location-select').addEventListener('change', function() {
-            const locationInput = document.getElementById('location-input');
-            if (this.value) {
-                locationInput.style.display = 'inline-block';
-                locationInput.placeholder = `Enter ${this.value}`;
-            } else {
-                locationInput.style.display = 'none';
-            }
-        });
+        // California bounds for map
+        const CALIFORNIA_BOUNDS = {
+            north: 42.0,
+            south: 32.5,
+            west: -124.5,
+            east: -114.0
+        };
 
-        async function getPrediction() {
-            const btn = document.getElementById('predict-btn');
-            const originalText = btn.textContent;
-            btn.innerHTML = '<span class="loading"></span>';
+        const CALIFORNIA_CENTER = { lat: 36.7783, lng: -119.4179 };
 
-            const locationType = document.getElementById('location-select').value;
-            const locationValue = document.getElementById('location-input').value;
+        // Initialize map
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: CALIFORNIA_CENTER,
+                zoom: 6,
+                restriction: {
+                    latLngBounds: CALIFORNIA_BOUNDS,
+                    strictBounds: false
+                },
+                styles: [
+                    { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+                    { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+                    { elementType: "labels.text.fill", stylers: [{ color: "#8b8b8b" }] },
+                    { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#2a2a4a" }] },
+                    { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
+                    { featureType: "poi", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+                    { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
+                    { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#1e3a2f" }] },
+                    { featureType: "road", elementType: "geometry", stylers: [{ color: "#2d3748" }] },
+                    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#1a202c" }] },
+                    { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#3d4a5c" }] },
+                    { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1a202c" }] },
+                    { featureType: "transit", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+                    { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
+                    { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#4a5568" }] }
+                ],
+                mapTypeControl: false,
+                streetViewControl: false,
+                fullscreenControl: true
+            });
 
-            if (!locationType || !locationValue) {
-                showError('Please select a location type and enter a value.');
-                btn.textContent = originalText;
+            // Click listener for map
+            map.addListener('click', (event) => {
+                const lat = event.latLng.lat();
+                const lng = event.latLng.lng();
+                selectLocation(lat, lng);
+            });
+
+            // Setup Places Autocomplete
+            const searchInput = document.getElementById('location-search');
+            autocomplete = new google.maps.places.Autocomplete(searchInput, {
+                componentRestrictions: { country: 'us' },
+                bounds: CALIFORNIA_BOUNDS,
+                strictBounds: true,
+                fields: ['geometry', 'name', 'formatted_address']
+            });
+
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                if (place.geometry) {
+                    const lat = place.geometry.location.lat();
+                    const lng = place.geometry.location.lng();
+                    map.setCenter({ lat, lng });
+                    map.setZoom(12);
+                    selectLocation(lat, lng);
+                }
+            });
+
+            // Health check
+            healthCheck();
+        }
+
+        // Select location and get prediction
+        async function selectLocation(lat, lng) {
+            // Check if within California
+            if (lat < CALIFORNIA_BOUNDS.south || lat > CALIFORNIA_BOUNDS.north ||
+                lng < CALIFORNIA_BOUNDS.west || lng > CALIFORNIA_BOUNDS.east) {
+                showError('Please select a location within California');
                 return;
             }
 
+            // Clear existing markers
+            if (selectedMarker) selectedMarker.setMap(null);
+            nodeMarkers.forEach(m => m.setMap(null));
+            nodeMarkers = [];
+
+            // Add selected location marker
+            selectedMarker = new google.maps.Marker({
+                position: { lat, lng },
+                map: map,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 12,
+                    fillColor: '#06b6d4',
+                    fillOpacity: 1,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 3
+                },
+                zIndex: 1000
+            });
+
+            // Update UI
+            document.getElementById('lat-value').textContent = lat.toFixed(6);
+            document.getElementById('lng-value').textContent = lng.toFixed(6);
+            document.getElementById('location-info').style.display = 'block';
+
+            // Get prediction
+            await getPrediction(lat, lng);
+            
+            // Get nearby nodes
+            await getNearbyNodes(lat, lng);
+        }
+
+        // Get price prediction
+        async function getPrediction(lat, lng) {
             try {
-                const response = await fetch(`/predict?location_type=${locationType}&location_id=${encodeURIComponent(locationValue)}`);
+                const response = await fetch(`/predict/geo?latitude=${lat}&longitude=${lng}`);
                 const data = await response.json();
 
                 if (response.ok) {
                     document.getElementById('price-value').textContent = data.predicted_price.toFixed(2);
+                    
+                    const level = data.price_level.toLowerCase();
+                    let badgeClass = 'badge-low';
+                    if (level === 'medium') badgeClass = 'badge-medium';
+                    else if (level === 'high') badgeClass = 'badge-high';
+                    else if (level === 'critical') badgeClass = 'badge-critical';
+                    
+                    document.getElementById('price-badge').innerHTML = 
+                        `<span class="price-badge ${badgeClass}">${data.price_level}</span>`;
+                    
                     document.getElementById('level-value').textContent = data.price_level;
-                    document.getElementById('level-description').textContent = data.description;
-                    document.getElementById('confidence-value').textContent = data.confidence;
-                    document.getElementById('price-time').textContent = new Date(data.timestamp).toLocaleString();
+                    document.getElementById('level-desc').textContent = data.description || '--';
+                    document.getElementById('confidence-value').textContent = data.confidence || '--';
+                    document.getElementById('time-value').textContent = 
+                        new Date(data.timestamp).toLocaleTimeString();
 
-                    const levelClass = `badge-${data.price_level.toLowerCase()}`;
-                    document.getElementById('price-level').innerHTML = 
-                        `<div class="price-badge ${levelClass}">${data.price_level}</div>`;
+                    // Update node info
+                    if (data.nearest_node) {
+                        document.getElementById('node-info').innerHTML = `
+                            <div class="node-info">
+                                <div class="node-name">${data.nearest_node.node_id}</div>
+                                <div class="node-detail">
+                                    <span>Distance</span>
+                                    <span>${data.nearest_node.distance_km.toFixed(2)} km</span>
+                                </div>
+                                <div class="node-detail">
+                                    <span>Type</span>
+                                    <span>${data.nearest_node.node_type || 'Unknown'}</span>
+                                </div>
+                                <div class="node-detail">
+                                    <span>Area</span>
+                                    <span>${data.nearest_node.area || 'CA'}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
 
-                    document.getElementById('status').textContent = '✓ Online - Prediction successful';
-                    document.getElementById('error-message').style.display = 'none';
+                    hideError();
+                    updateStatus('Online - Prediction successful', true);
                 } else {
                     showError(data.error || 'Prediction failed');
                 }
             } catch (error) {
                 showError(`Error: ${error.message}`);
-            } finally {
-                btn.textContent = originalText;
             }
         }
 
-        async function getTier2Data() {
-            const container = document.getElementById('data-sources-container');
-            container.style.display = container.style.display === 'none' ? 'grid' : 'none';
-
-            if (container.style.display === 'none') return;
-
+        // Get nearby CAISO nodes
+        async function getNearbyNodes(lat, lng) {
             try {
-                const response = await fetch('/tier2-data');
+                const response = await fetch(`/nodes/nearby?latitude=${lat}&longitude=${lng}&radius_km=50&limit=20`);
                 const data = await response.json();
 
-                if (response.ok) {
-                    updateDataSource('plants', data.power_plants);
-                    updateDataSource('weather', data.weather_by_city);
-                    updateDataSource('prices', data.caiso_prices_by_city);
-                    updateDataSource('earthquakes', data.earthquakes);
-                    document.getElementById('error-message').style.display = 'none';
-                } else {
-                    showError(data.error || 'Failed to fetch Tier 2 data');
+                if (response.ok && data.nodes) {
+                    data.nodes.forEach(node => {
+                        const isLoad = node.node_type && node.node_type.toLowerCase().includes('load');
+                        const marker = new google.maps.Marker({
+                            position: { lat: node.latitude, lng: node.longitude },
+                            map: map,
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 6,
+                                fillColor: isLoad ? '#8b5cf6' : '#f59e0b',
+                                fillOpacity: 0.8,
+                                strokeColor: '#ffffff',
+                                strokeWeight: 1
+                            },
+                            title: node.node_id
+                        });
+
+                        // Info window on hover
+                        const infoWindow = new google.maps.InfoWindow({
+                            content: `
+                                <div style="font-family: 'Outfit', sans-serif; padding: 8px;">
+                                    <strong style="color: #06b6d4;">${node.node_id}</strong><br>
+                                    <small>Type: ${node.node_type || 'Unknown'}</small><br>
+                                    <small>Distance: ${node.distance_km.toFixed(2)} km</small>
+                                </div>
+                            `
+                        });
+
+                        marker.addListener('mouseover', () => infoWindow.open(map, marker));
+                        marker.addListener('mouseout', () => infoWindow.close());
+                        marker.addListener('click', () => {
+                            selectLocation(node.latitude, node.longitude);
+                        });
+
+                        nodeMarkers.push(marker);
+                    });
                 }
             } catch (error) {
-                showError(`Error: ${error.message}`);
+                console.error('Failed to fetch nearby nodes:', error);
             }
         }
 
-        function updateDataSource(name, data) {
-            if (!data) return;
-
-            if (data.count !== undefined) {
-                document.getElementById(`${name}-count`).textContent = data.count;
-                document.getElementById(`${name}-status`).textContent = 
-                    data.available ? '✓ Available' : '✗ Unavailable';
-                document.getElementById(`${name}-status`).className = 
-                    data.available ? 'source-status' : 'source-status error';
-            }
-        }
-
-        async function getModelInfo() {
-            try {
-                const response = await fetch('/model-info');
-                const data = await response.json();
-
-                if (response.ok) {
-                    alert(`Model Info:\n\n` +
-                        `Version: ${data.version}\n` +
-                        `Features: ${data.features}\n` +
-                        `Status: ${data.status}\n` +
-                        `Training MAE: ${data.training_metadata.metrics?.mae?.toFixed(2)} €/MWh`);
-                    document.getElementById('error-message').style.display = 'none';
-                } else {
-                    showError(data.error || 'Failed to fetch model info');
-                }
-            } catch (error) {
-                showError(`Error: ${error.message}`);
-            }
-        }
-
-        function autoRefresh() {
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = null;
-                document.getElementById('status').textContent = 'Auto-refresh: OFF';
+        // Use current location
+        function useCurrentLocation() {
+            if (navigator.geolocation) {
+                updateStatus('Getting your location...', true);
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        map.setCenter({ lat, lng });
+                        map.setZoom(10);
+                        selectLocation(lat, lng);
+                    },
+                    (error) => {
+                        showError('Unable to get your location. Please search or click on the map.');
+                    }
+                );
             } else {
-                getPrediction();
-                autoRefreshInterval = setInterval(getPrediction, 10000); // 10 seconds
-                document.getElementById('status').textContent = 'Auto-refresh: ON (10s)';
+                showError('Geolocation is not supported by your browser');
             }
         }
 
-        function showError(message) {
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            document.getElementById('status').textContent = '✗ Error: ' + message;
-        }
-
-        // Initial checks
+        // Health check
         async function healthCheck() {
             try {
-                const response = await fetch('/health');
+                const response = await fetch('/geo/health');
                 const data = await response.json();
 
                 if (data.model_loaded) {
-                    document.getElementById('status').textContent = '✓ Online - Ready for predictions';
-                    getPrediction();
+                    updateStatus('Online - Ready for predictions', true);
                 } else {
-                    showError('Model not loaded. Run: python train.py');
+                    updateStatus('Model not loaded', false);
+                    showError('Model not loaded. Please train the model first.');
                 }
             } catch (error) {
+                updateStatus('Connection failed', false);
                 showError(`Connection failed: ${error.message}`);
             }
         }
 
-        // Run on page load
-        window.addEventListener('load', healthCheck);
+        // UI helpers
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error-message').style.display = 'none';
+        }
+
+        function updateStatus(message, isOnline) {
+            document.getElementById('status-text').textContent = message;
+            const badge = document.getElementById('status-badge');
+            if (isOnline) {
+                badge.style.background = 'rgba(16, 185, 129, 0.1)';
+                badge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                badge.style.color = '#10b981';
+            } else {
+                badge.style.background = 'rgba(244, 63, 94, 0.1)';
+                badge.style.borderColor = 'rgba(244, 63, 94, 0.3)';
+                badge.style.color = '#f43f5e';
+            }
+        }
     </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&libraries=places&callback=initMap" async defer></script>
 </body>
 </html>

@@ -1,10 +1,11 @@
 #!/bin/bash
-# One-command deployment for Smart Grid ML (Pre-trained model)
+# One-command deployment for Smart Grid ML Geo Prediction (Pre-trained model)
 
 set -e
 
 echo "========================================"
-echo "Smart Grid ML - Cloud Run Deployment"
+echo "Smart Grid ML - Geo Prediction"
+echo "Cloud Run Deployment"
 echo "========================================"
 echo ""
 
@@ -22,34 +23,46 @@ else
     echo "     REGION='your-gcp-region'"
     echo "   Example:"
     echo "     PROJECT_ID='smart-grid-479417'"
-    echo "     SERVICE_NAME='smart-grid'"
+    echo "     SERVICE_NAME='smart-grid-geo'"
     echo "     REGION='us-central1'"
     exit 1
 fi
-# Configuration
-# PROJECT_ID="smart-grid-479417"  # CHANGE THIS!
-# SERVICE_NAME="smart-grid"
-# REGION="us-central1"  # Free tier eligible region
-# IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
+
+IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
 
 # Check prerequisites
 echo "Checking prerequisites..."
 
-# 1. Check if model exists
-if [ ! -f "data/models/price_model.keras" ]; then
-    echo "❌ Error: Model not found at models/price_model.keras"
-    echo "   Run: python train.py --epochs 50"
+# 1. Check if geo model exists
+if [ ! -f "data/models/geo_model.keras" ]; then
+    echo "❌ Error: Geo model not found at data/models/geo_model.keras"
+    echo "   Run the training pipeline first:"
+    echo "     1. docker-compose -f docker-compose-downloader.yml up"
+    echo "     2. docker-compose up trainer"
     exit 1
 fi
 
-# 2. Check if gcloud is installed
+# 2. Check other required model files
+if [ ! -f "data/models/geo_scaler.pkl" ] || [ ! -f "data/models/geo_features.json" ]; then
+    echo "❌ Error: Missing model artifacts (geo_scaler.pkl or geo_features.json)"
+    echo "   Run: docker-compose up trainer"
+    exit 1
+fi
+
+# 3. Check CAISO node data
+if [ ! -f "data/caiso-price-map.json" ]; then
+    echo "❌ Error: CAISO price map not found at data/caiso-price-map.json"
+    exit 1
+fi
+
+# 4. Check if gcloud is installed
 if ! command -v gcloud &> /dev/null; then
     echo "❌ Error: gcloud CLI not installed"
     echo "   Install: https://cloud.google.com/sdk/docs/install"
     exit 1
 fi
 
-# 3. Check if Docker is running
+# 5. Check if Docker is running
 if ! docker info &> /dev/null; then
     echo "❌ Error: Docker is not running"
     exit 1
@@ -90,17 +103,37 @@ echo ""
 
 # Deploy to Cloud Run
 echo "Deploying to Cloud Run..."
+
+# Get Google Maps API key from environment or .env file
+if [ -z "${GOOGLE_MAPS_API_KEY}" ] && [ -f .env ]; then
+  # Parse .env file properly (handles KEY=value and KEY="value" formats)
+  GOOGLE_MAPS_API_KEY=$(grep -E '^GOOGLE_MAPS_API_KEY=' .env | cut -d '=' -f2 | tr -d '"' | tr -d "'")
+  export GOOGLE_MAPS_API_KEY
+fi
+
+if [ -z "${GOOGLE_MAPS_API_KEY}" ]; then
+  echo "❌ Error: GOOGLE_MAPS_API_KEY not set!"
+  echo "   Add to .env file: GOOGLE_MAPS_API_KEY=your_api_key"
+  echo "   Or export: export GOOGLE_MAPS_API_KEY=your_key"
+  echo ""
+  echo "   Get a key from: https://console.cloud.google.com/apis/credentials"
+  echo "   Required APIs: Maps JavaScript API, Places API"
+  exit 1
+fi
+
+echo "✓ Google Maps API key found"
+
 gcloud run deploy ${SERVICE_NAME} \
   --image ${IMAGE_NAME} \
   --platform managed \
   --region ${REGION} \
   --allow-unauthenticated \
-  --memory 1Gi \
+  --memory 2Gi \
   --cpu 1 \
   --max-instances 10 \
   --min-instances 0 \
   --timeout 600 \
-  --set-env-vars="EIA_API_KEY='AzFUfTPb16YRdotKhve64uxbg7lRfrBqm9nqfaJ2',NCEI_TOKEN='TDNQRthmEjyQqTHBKZMaQvKvlWUBsbri'"
+  --set-env-vars="NCEI_TOKEN=TDNQRthmEjyQqTHBKZMaQvKvlWUBsbri,GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}"
 
 echo "✓ Deployed!"
 echo ""
@@ -122,14 +155,20 @@ echo ""
 echo "1. Health Check:"
 echo "   curl ${SERVICE_URL}/health"
 echo ""
-echo "2. Price Prediction (Los Angeles):"
-echo "   curl '${SERVICE_URL}/predict?location_id=los_angeles&location_type=city'"
+echo "2. Geo Health Check:"
+echo "   curl ${SERVICE_URL}/geo/health"
 echo ""
-echo "3. Available Locations:"
-echo "   curl ${SERVICE_URL}/locations"
+echo "3. Price Prediction by Coordinates (Los Angeles):"
+echo "   curl '${SERVICE_URL}/predict/geo?latitude=34.0522&longitude=-118.2437'"
 echo ""
-echo "4. Web UI:"
-echo "   Open: ${SERVICE_URL}/"
+echo "4. Price Prediction by Coordinates (San Francisco):"
+echo "   curl '${SERVICE_URL}/predict/geo?latitude=37.7749&longitude=-122.4194'"
+echo ""
+echo "5. Find Nearby Nodes:"
+echo "   curl '${SERVICE_URL}/nodes/nearby?latitude=34.05&longitude=-118.24&radius_km=25'"
+echo ""
+echo "6. API Info:"
+echo "   curl ${SERVICE_URL}/"
 echo ""
 echo "========================================"
 echo "Monitoring & Logs:"
