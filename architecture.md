@@ -6,19 +6,25 @@ This document provides a detailed technical overview of the Smart Grid ML system
 
 ## System Overview
 
-The system predicts California ISO (CAISO) Locational Marginal Prices (LMP) for any latitude/longitude coordinate in California. It uses a deep learning model trained on historical prices from 4,300+ CAISO nodes combined with weather, power plant proximity, and temporal features.
+The system predicts California ISO (CAISO) Locational Marginal Prices (LMP) for any latitude/longitude coordinate in California. Key capabilities include:
+
+- **Real-time price prediction** using a deep learning model trained on 4,300+ CAISO nodes
+- **16-day price forecasting** with hourly granularity via Open-Meteo weather integration
+- **Demand forecasting** using weather-driven ML model or pattern-based estimation
+- **Interactive visualization** with Chart.js dual-axis charts and CSV export
 
 ```mermaid
 flowchart TB
     subgraph External["External Data Sources"]
-        CAISO["CAISO OASIS API<br/>Historical LMP Prices"]
+        CAISO["CAISO OASIS API<br/>Prices + Demand"]
         NOAA["NOAA GHCND<br/>Weather Stations"]
         CartoDB["CartoDB<br/>Power Plants"]
         PriceMap["caiso-price-map.json<br/>Node Coordinates"]
+        OpenMeteo["Open-Meteo API<br/>16-Day Weather Forecast"]
     end
     
     subgraph Pipeline["Data Pipeline"]
-        Download["download_geo.py<br/>Fetch Prices"]
+        Download["download_geo.py<br/>Fetch Prices + Demand"]
         Extract["caiso_nodes.py<br/>Extract CA Nodes"]
         Features["geo_features.py<br/>Build Features"]
     end
@@ -29,14 +35,23 @@ flowchart TB
         Scaler["StandardScaler"]
     end
     
+    subgraph Forecast["Forecasting"]
+        DemandForecast["demand_forecast.py"]
+        WeatherFetch["WeatherForecast<br/>Open-Meteo Client"]
+        DemandModel["DemandForecaster<br/>GradientBoosting"]
+        Patterns["DemandPatterns<br/>Hourly/Monthly/DoW"]
+    end
+    
     subgraph Serving["Production Serving"]
         Flask["app_geo.py<br/>Flask API"]
-        Predict["GeoPricePredictor"]
+        Predict["Real-time Prediction"]
+        ForecastAPI["16-Day Forecast"]
+        DemandAPI["Demand Forecast"]
         Login["Session Auth"]
     end
     
     subgraph Clients["Clients"]
-        Browser["Web Browser<br/>Google Maps UI"]
+        Browser["Web Browser<br/>Maps + Charts"]
         REST["REST API<br/>Programmatic Access"]
     end
     
@@ -54,7 +69,16 @@ flowchart TB
     TFModel --> Flask
     Scaler --> Flask
     Flask --> Predict
+    Flask --> ForecastAPI
+    Flask --> DemandAPI
     Flask --> Login
+    
+    OpenMeteo --> WeatherFetch
+    WeatherFetch --> DemandForecast
+    DemandForecast --> DemandModel
+    DemandForecast --> Patterns
+    DemandForecast --> ForecastAPI
+    DemandForecast --> DemandAPI
     
     Browser --> Flask
     REST --> Flask
@@ -102,13 +126,13 @@ classDiagram
 
 #### Price Downloader (`download_geo.py`)
 
-Fetches historical LMP prices from CAISO OASIS API.
+Fetches historical LMP prices and system demand from CAISO OASIS API.
 
 ```mermaid
 sequenceDiagram
     participant Script as download_geo.py
     participant CAISO as CAISO OASIS API
-    participant Storage as geo_prices.pkl
+    participant Storage as Data Files
     
     Script->>Script: Load CA nodes list
     Script->>Script: Select sample nodes
@@ -125,12 +149,20 @@ sequenceDiagram
     end
     
     Script->>Storage: Save geo_prices.pkl
+    
+    Note over Script,Storage: Demand Data Download
+    loop For each month
+        Script->>CAISO: GET SingleZip (SLD_FCST)
+        CAISO-->>Script: ZIP with demand CSV
+        Script->>Script: Parse actual demand values
+    end
+    Script->>Storage: Save demand.pkl
 ```
 
 **CAISO API Details:**
 - Endpoint: `http://oasis.caiso.com/oasisapi/SingleZip`
-- Query Type: `PRC_LMP`
-- Market: `DAM` (Day-Ahead Market)
+- Price Query: `PRC_LMP` (Day-Ahead Market)
+- Demand Query: `SLD_FCST` (System Load Forecast - ACTUAL)
 - Format: ZIP containing CSV
 - Rate Limit: 2 second delay between requests
 
@@ -173,10 +205,55 @@ flowchart LR
 | Category | Features | Description |
 |----------|----------|-------------|
 | **Spatial** | `latitude`, `longitude`, `distance_to_nearest_plant_km`, `plants_within_50km`, `total_capacity_within_50km`, `avg_price_neighbors_25km` | Location-based features |
-| **Temporal** | `hour_sin`, `hour_cos`, `month_sin`, `month_cos`, `day_of_week`, `is_weekend` | Cyclical time encoding |
-| **Weather** | `temperature`, `wind_speed`, `precipitation`, `cloud_cover` | Interpolated from nearby stations |
-| **Generation** | `solar_mw`, `wind_mw`, `total_demand`, `renewable_pct` | Derived from weather/time |
-| **Lag** | `price_lag_1`, `price_lag_3`, `price_lag_6`, `price_lag_12`, etc. | Historical values |
+| **Temporal** | `hour_sin`, `hour_cos`, `month_sin`, `month_cos`, `day_of_week`, `is_weekend`, `doy_sin`, `doy_cos` | Cyclical time encoding |
+| **Weather** | `temperature`, `wind_speed`, `humidity`, `cloud_cover` | Interpolated from nearby stations |
+| **Demand** | `system_demand_mw`, `demand_percentile`, `demand_vs_typical`, `is_high_demand`, `is_low_demand` | Grid demand indicators |
+| **Lag** | `price_lag_1`, `price_lag_3`, `price_lag_6`, `price_lag_12`, `price_lag_24` | Historical/rolling prices |
+
+### 1.5 Demand Forecasting (`demand_forecast.py`)
+
+Weather-based demand forecasting for 16-day horizons.
+
+```mermaid
+classDiagram
+    class WeatherForecast {
+        +OPENMETEO_URL: str
+        +get_forecast(lat, lon, days) DataFrame
+        +get_california_forecast(days) Dict
+    }
+    
+    class DemandPatterns {
+        +hourly_pattern: Dict
+        +monthly_pattern: Dict
+        +dow_pattern: Dict
+        +base_demand: float
+        +extract_from_data(demand_df)
+        +get_typical_demand(timestamp) float
+        +save(path)
+        +load(path)
+        +default_california_patterns() DemandPatterns
+    }
+    
+    class DemandForecaster {
+        +model: GradientBoostingRegressor
+        +is_fitted: bool
+        +feature_names: List
+        +patterns: DemandPatterns
+        +build_features(weather_df) DataFrame
+        +train(weather_df, demand_series) Dict
+        +forecast(weather_df) DataFrame
+        +save(model_path)
+        +load(model_path)
+    }
+    
+    DemandForecaster --> DemandPatterns
+    DemandForecaster --> WeatherForecast
+```
+
+**Key Functions:**
+- `WeatherForecast.get_forecast()` - Fetch 16-day hourly weather from Open-Meteo
+- `DemandForecaster.forecast()` - Predict demand from weather (ML or pattern-based)
+- `DemandPatterns.get_typical_demand()` - California duck-curve patterns
 
 ### 3. Model Layer (`train_geo.py`)
 
@@ -283,14 +360,15 @@ flowchart TB
     end
     
     subgraph Endpoints["API Endpoints"]
-        GeoPredict["/predict/geo<br/>lat/lon → price"]
-        AddrPredict["/predict/address<br/>address → geocode → price"]
-        Nearby["/nodes/nearby<br/>Find nodes in radius"]
+        GeoPredict["/predict/geo<br/>Real-time price"]
+        Forecast["/predict/forecast<br/>16-day forecast"]
+        Demand["/demand/forecast<br/>Demand forecast"]
+        AddrPredict["/predict/address<br/>Address → price"]
+        Nearby["/nodes/nearby<br/>Find nodes"]
         Health["/geo/health"]
-        Info["/geo/model-info"]
     end
     
-    subgraph Processing["Request Processing"]
+    subgraph RealTime["Real-time Processing"]
         Validate["Validate CA Bounds"]
         FindNode["Find Nearest Node"]
         BuildFeat["Build Features"]
@@ -298,19 +376,25 @@ flowchart TB
         Classify["Classify Price Level"]
     end
     
+    subgraph ForecastProc["Forecast Processing"]
+        FetchWeather["Fetch 16-day Weather<br/>Open-Meteo"]
+        ForecastDemand["Forecast Demand"]
+        RollingPredict["Rolling Price Prediction<br/>Lag propagation"]
+        DailySummary["Build Daily Summary"]
+    end
+    
     Login --> Session
     Session --> GeoPredict
-    Session --> AddrPredict
+    Session --> Forecast
+    Session --> Demand
     
-    GeoPredict --> Validate
-    AddrPredict --> Validate
-    Validate --> FindNode
-    FindNode --> BuildFeat
-    BuildFeat --> Predict
-    Predict --> Classify
+    GeoPredict --> Validate --> FindNode --> BuildFeat --> Predict --> Classify
+    
+    Forecast --> FetchWeather --> ForecastDemand --> RollingPredict --> DailySummary
+    Demand --> FetchWeather --> ForecastDemand
 ```
 
-#### Prediction Flow
+#### Real-time Prediction Flow
 
 ```mermaid
 sequenceDiagram
@@ -339,6 +423,45 @@ sequenceDiagram
     Flask->>Flask: classify_price_level(price)
     Flask-->>Client: JSON response
 ```
+
+#### 16-Day Forecast Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Flask as app_geo.py
+    participant Weather as WeatherForecast
+    participant Demand as DemandForecaster
+    participant Builder as GeoFeatureBuilder
+    participant Model as GeoPricePredictor
+    
+    Client->>Flask: GET /predict/forecast?lat=34.05&lon=-118.24&days=14
+    Flask->>Flask: Validate California bounds
+    
+    Flask->>Weather: get_forecast(lat, lon, days=14)
+    Weather->>Weather: Call Open-Meteo API
+    Weather-->>Flask: weather_df (336 hours)
+    
+    Flask->>Demand: forecast(weather_df)
+    Demand->>Demand: Pattern-based or ML prediction
+    Demand-->>Flask: demand_df
+    
+    loop For each hour (rolling)
+        Flask->>Builder: build_all_features(weather, demand)
+        Flask->>Flask: Set lag features from previous predictions
+        Flask->>Model: predict_single(features)
+        Model-->>Flask: price
+        Flask->>Flask: Store price for next lag
+    end
+    
+    Flask->>Flask: Build daily_summary
+    Flask-->>Client: JSON (hourly + daily + metadata)
+```
+
+**Rolling Prediction Strategy:**
+- First hour uses default lag values (~$45/MWh typical California price)
+- Each subsequent hour uses predicted prices as lag features
+- Prevents cascade of unrealistic predictions from zero-initialized lags
 
 ---
 
@@ -564,8 +687,9 @@ tier3_poc/
 ├── src/
 │   ├── app_geo.py           # Flask API entry point
 │   ├── train_geo.py         # Model training
-│   ├── geo_features.py      # Feature engineering
-│   ├── download_geo.py      # CAISO data fetcher
+│   ├── geo_features.py      # Feature engineering (spatial, temporal, demand)
+│   ├── demand_forecast.py   # Weather-based demand forecasting
+│   ├── download_geo.py      # CAISO data fetcher (prices + demand)
 │   ├── caiso_nodes.py       # Node management
 │   ├── geo_utils.py         # Geospatial utilities
 │   ├── tier2_pipeline.py    # NOAA/CartoDB fetchers
@@ -573,28 +697,82 @@ tier3_poc/
 │
 ├── data/
 │   ├── downloads/           # Raw data
-│   │   ├── geo_prices.pkl
+│   │   ├── geo_prices.pkl   # Historical CAISO prices
+│   │   ├── demand.pkl       # Historical system demand
 │   │   ├── power_plants.pkl
 │   │   └── download_geo.log
 │   ├── models/              # Trained artifacts
-│   │   ├── geo_model.keras
+│   │   ├── geo_model.keras  # Price prediction model
 │   │   ├── geo_scaler.pkl
 │   │   ├── geo_features.json
-│   │   └── geo_metadata.json
+│   │   ├── geo_metadata.json
+│   │   └── demand_model.pkl # Optional demand ML model
 │   ├── training/            # Training logs
 │   │   └── train_geo.log
 │   └── prediction/          # API logs
 │       └── app_geo.log
 │
 ├── templates/
-│   ├── index.html           # Main UI
+│   ├── index.html           # Main UI (Maps + Charts + Forecast Modal)
 │   └── login.html           # Login page
+│
+├── docs/
+│   └── images/              # Screenshots
+│       ├── screenshot.png
+│       ├── 14days-forecast.png
+│       └── export-csv.png
 │
 ├── docker-compose.yml               # Trainer + App
 ├── docker-compose-downloader.yml    # Downloader
 ├── Dockerfile                       # Base image
 ├── Dockerfile.cloudrun              # Production image
 └── deploy-to-cloudrun.sh            # GCP deploy script
+```
+
+---
+
+## API Endpoints Reference
+
+| Endpoint | Method | Description | Key Parameters |
+|----------|--------|-------------|----------------|
+| `/predict/geo` | GET | Real-time price prediction | `latitude`, `longitude` |
+| `/predict/address` | GET | Price by address | `address` |
+| `/predict/forecast` | GET/POST | 16-day hourly forecast | `latitude`, `longitude`, `days` (1-16) |
+| `/demand/forecast` | GET/POST | Demand-only forecast | `latitude`, `longitude`, `days` (1-16) |
+| `/nodes/nearby` | GET | Find CAISO nodes | `latitude`, `longitude`, `radius_km`, `limit` |
+| `/geo/health` | GET | Health check | - |
+| `/geo/model-info` | GET | Model metadata | - |
+
+### Forecast Response Structure
+
+```json
+{
+  "location": {"latitude": 34.05, "longitude": -118.24},
+  "forecast_days": 14,
+  "total_hours": 336,
+  "daily_summary": [{
+    "date": "2026-01-12",
+    "avg_price": 42.50,
+    "min_price": 28.30,
+    "max_price": 68.20,
+    "peak_hour": 18,
+    "avg_demand_mw": 28500
+  }],
+  "hourly": [{
+    "timestamp": "2026-01-12T00:00:00",
+    "price": 35.20,
+    "level": "LOW",
+    "demand_mw": 22000,
+    "temp_c": 12.5,
+    "wind_mps": 3.2,
+    "humidity": 65,
+    "is_daytime": false
+  }],
+  "data_sources": {
+    "weather": "Open-Meteo API",
+    "demand": "Pattern-based estimation"
+  }
+}
 ```
 
 ---
@@ -653,9 +831,9 @@ curl http://localhost:8001/geo/model-info
 ### Adding New Features
 
 1. Add feature calculation in `geo_features.py` → `GeoFeatureBuilder`
-2. Update `TRAINING_FEATURES` list in `train_geo.py`
-3. Retrain model
-4. Update `build_prediction_features()` in `app_geo.py`
+2. Update `ALL_FEATURES` list in `geo_features.py`
+3. Retrain model: `docker-compose up trainer`
+4. Features are automatically picked up in prediction
 
 ### Adding New Data Sources
 
@@ -668,3 +846,30 @@ curl http://localhost:8001/geo/model-info
 1. Modify `GeoModelConfig` in `train_geo.py`
 2. Update `GeoPricePredictor.build_model()`
 3. Retrain and deploy
+
+### Extending Demand Forecasting
+
+1. Train ML model on historical weather + demand:
+   ```python
+   from demand_forecast import DemandForecaster
+   forecaster = DemandForecaster()
+   metrics = forecaster.train(weather_df, demand_series)
+   forecaster.save('data/models/demand_model.pkl')
+   ```
+
+2. Extract patterns from historical data:
+   ```python
+   from demand_forecast import DemandPatterns
+   patterns = DemandPatterns()
+   patterns.extract_from_data(demand_df)
+   patterns.save('data/models/demand_patterns.json')
+   ```
+
+### UI Customization
+
+The forecast modal in `templates/index.html` uses:
+- **Chart.js** for dual-axis price/demand visualization
+- **Google Maps API** for location selection
+- **Bootstrap-like** styling with CSS variables
+
+To modify chart appearance, edit the `createForecastChart()` function.

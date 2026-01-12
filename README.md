@@ -11,19 +11,33 @@ A machine learning system for predicting electricity prices at **any location in
 
 - **🗺️ Geolocation-Based**: Predict prices for any latitude/longitude in California
 - **📍 Address Search**: Enter any California address via Google Maps integration
+- **📅 16-Day Forecast**: Hourly price and demand predictions up to 16 days ahead
+- **🌤️ Weather-Integrated**: Open-Meteo weather forecasts drive demand & price predictions
+- **📊 Interactive Charts**: Visualize price trends with Chart.js dual-axis charts
+- **📥 CSV Export**: Download forecast data for offline analysis
 - **🔌 4,300+ CAISO Nodes**: Full California ISO pricing node coverage
-- **🌡️ Weather-Aware**: Real-time weather interpolation from NOAA stations
 - **⚡ Power Plant Proximity**: Spatial features from nearby generation facilities
 - **🐳 Docker-Ready**: Containerized training and deployment pipeline
 - **☁️ Cloud Run**: One-command deployment to Google Cloud
 
 ---
 
-## 📸 Screenshot
+## 📸 Screenshots
 
+### Real-Time Price Prediction
 ![Smart Grid - Electricity Price Prediction](docs/images/screenshot.png)
 
 *Interactive map interface with address search, real-time price predictions, and nearest CAISO node information*
+
+### 14-Day Price & Demand Forecast
+![14-Day Forecast](docs/images/14days-forecast.png)
+
+*Hourly price and demand forecast with dual-axis Chart.js visualization, daily summaries, and weather conditions*
+
+### Export to CSV
+![Export CSV](docs/images/export-csv.png)
+
+*One-click export of forecast data for offline analysis in Excel or other tools*
 
 ---
 
@@ -46,36 +60,48 @@ A machine learning system for predicting electricity prices at **any location in
 ```mermaid
 flowchart TB
     subgraph Client["🌐 Client Layer"]
-        Browser["Web Browser"]
+        Browser["Web Browser<br/>Chart.js + Google Maps"]
         API["REST API Client"]
     end
     
     subgraph App["🖥️ Flask Application"]
         AppGeo["app_geo.py"]
         Login["Login/Auth"]
-        Predict["Prediction Endpoint"]
-        Maps["Google Maps Integration"]
+        Predict["Real-time Prediction"]
+        Forecast["16-Day Forecast"]
+        DemandAPI["Demand Forecast"]
     end
     
-    subgraph Model["🧠 ML Model"]
-        GeoPredictor["GeoPricePredictor"]
+    subgraph Model["🧠 ML Models"]
+        GeoPredictor["GeoPricePredictor<br/>TensorFlow NN"]
+        DemandModel["DemandForecaster<br/>GradientBoosting"]
         Scaler["StandardScaler"]
         Features["Feature Builder"]
     end
     
+    subgraph External["🌐 External APIs"]
+        OpenMeteo["Open-Meteo API<br/>16-Day Weather"]
+    end
+    
     subgraph Data["📊 Data Sources"]
-        CAISO["CAISO OASIS API\n4,300+ CA Nodes"]
-        NOAA["NOAA Weather\nstations.json"]
-        Plants["Power Plants\nCartoDB"]
-        Nodes["caiso-price-map.json\nNode Locations"]
+        CAISO["CAISO OASIS API<br/>Prices + Demand"]
+        NOAA["NOAA Weather<br/>stations.json"]
+        Plants["Power Plants<br/>CartoDB"]
+        Nodes["caiso-price-map.json<br/>Node Locations"]
     end
     
     Browser --> AppGeo
     API --> AppGeo
     AppGeo --> Login
     AppGeo --> Predict
-    AppGeo --> Maps
+    AppGeo --> Forecast
+    AppGeo --> DemandAPI
     Predict --> GeoPredictor
+    Forecast --> OpenMeteo
+    Forecast --> DemandModel
+    Forecast --> GeoPredictor
+    DemandAPI --> OpenMeteo
+    DemandAPI --> DemandModel
     GeoPredictor --> Scaler
     GeoPredictor --> Features
     Features --> Nodes
@@ -89,10 +115,11 @@ flowchart TB
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Geo App** | `app_geo.py` | Flask API with login, prediction endpoints |
+| **Geo App** | `app_geo.py` | Flask API with prediction, forecast, and demand endpoints |
 | **Geo Training** | `train_geo.py` | Neural network training pipeline |
-| **Feature Builder** | `geo_features.py` | Spatial feature engineering |
-| **Data Downloader** | `download_geo.py` | CAISO price data fetcher |
+| **Feature Builder** | `geo_features.py` | Spatial, temporal, weather, and demand feature engineering |
+| **Demand Forecast** | `demand_forecast.py` | Weather-based demand forecasting (Open-Meteo + ML) |
+| **Data Downloader** | `download_geo.py` | CAISO price and demand data fetcher |
 | **Node Manager** | `caiso_nodes.py` | California node extraction & lookup |
 | **Geo Utilities** | `geo_utils.py` | Haversine distance, bounds checking |
 
@@ -155,11 +182,13 @@ Open http://localhost:8001 and login with:
 flowchart LR
     subgraph Download["1️⃣ Download"]
         A["CAISO OASIS API"] --> B["geo_prices.pkl"]
+        A2["CAISO Demand API"] --> B2["demand.pkl"]
         C["caiso-price-map.json"] --> D["caiso_nodes_california.json"]
     end
     
     subgraph Features["2️⃣ Feature Engineering"]
         B --> E["geo_features.py"]
+        B2 --> E
         F["stations.json\nNOAA Weather"] --> E
         G["power_plants.pkl"] --> E
         E --> H["geo_training.pkl"]
@@ -176,6 +205,7 @@ flowchart LR
         J --> M["app_geo.py"]
         K --> M
         L --> M
+        OM["Open-Meteo API"] --> M
         M --> N["REST API"]
     end
 ```
@@ -184,7 +214,9 @@ flowchart LR
 
 | Source | Description | Update Frequency |
 |--------|-------------|------------------|
-| **CAISO OASIS** | Locational Marginal Prices (LMP) | Historical (training) |
+| **CAISO OASIS (Prices)** | Locational Marginal Prices (LMP) | Historical (training) |
+| **CAISO OASIS (Demand)** | System-wide electricity demand | Historical (training) |
+| **Open-Meteo** | 16-day hourly weather forecast | Real-time (forecasting) |
 | **NOAA GHCND** | Weather stations across California | Daily |
 | **CartoDB** | Power plant locations & capacity | Static |
 | **caiso-price-map.json** | 4,300+ California pricing nodes | Static |
@@ -207,13 +239,18 @@ flowchart LR
 **Weather Features:**
 - Temperature (interpolated from nearby stations)
 - Wind speed
-- Precipitation
-- Cloud cover
+- Humidity, Cloud cover
+- Cooling/Heating degree days
+
+**Demand Features:**
+- System demand (MW)
+- Demand percentile (vs historical)
+- Demand vs typical ratio
+- High/Low demand indicators
 
 **Lag Features:**
-- Price history (1, 3, 6, 12 hour lags)
-- Temperature history
-- Solar/Wind generation history
+- Price history (1, 3, 6, 12, 24 hour lags)
+- Rolling predictions for forecasts
 
 ---
 
@@ -263,6 +300,65 @@ GET /predict/address?address=1600+Amphitheatre+Parkway,+Mountain+View,+CA
     "latitude": 37.4220,
     "longitude": -122.0841
   }
+}
+```
+
+### Price Forecast (Up to 16 Days)
+
+```bash
+GET /predict/forecast?latitude=34.05&longitude=-118.24&days=14
+```
+
+**Response:**
+```json
+{
+  "location": {"latitude": 34.05, "longitude": -118.24},
+  "forecast_days": 14,
+  "total_hours": 336,
+  "daily_summary": [
+    {
+      "date": "2026-01-12",
+      "avg_price": 42.50,
+      "min_price": 28.30,
+      "max_price": 68.20,
+      "peak_hour": 18,
+      "avg_demand_mw": 28500
+    }
+  ],
+  "hourly": [
+    {
+      "timestamp": "2026-01-12T00:00:00",
+      "price": 35.20,
+      "level": "LOW",
+      "demand_mw": 22000,
+      "temp_c": 12.5,
+      "wind_mps": 3.2
+    }
+  ],
+  "data_sources": {
+    "weather": "Open-Meteo API",
+    "demand": "Pattern-based estimation"
+  }
+}
+```
+
+### Demand Forecast
+
+```bash
+GET /demand/forecast?latitude=34.05&longitude=-118.24&days=7
+```
+
+**Response:**
+```json
+{
+  "location": {"latitude": 34.05, "longitude": -118.24},
+  "forecast_days": 7,
+  "daily_summary": [
+    {"date": "2026-01-12", "avg_demand_mw": 28000, "peak_mw": 34000, "min_mw": 21000}
+  ],
+  "hourly": [
+    {"timestamp": "2026-01-12T00:00:00", "demand_mw": 22000, "temperature_c": 12.5}
+  ]
 }
 ```
 
@@ -494,8 +590,9 @@ tier3_poc/
 ├── src/
 │   ├── app_geo.py          # Flask API (main entry point)
 │   ├── train_geo.py        # Model training
-│   ├── geo_features.py     # Feature engineering
-│   ├── download_geo.py     # CAISO data downloader
+│   ├── geo_features.py     # Feature engineering (spatial, temporal, demand)
+│   ├── demand_forecast.py  # Weather-based demand forecasting
+│   ├── download_geo.py     # CAISO data downloader (prices + demand)
 │   ├── caiso_nodes.py      # Node management
 │   ├── geo_utils.py        # Geospatial utilities
 │   ├── tier2_pipeline.py   # Data fetchers (NOAA, CartoDB)
@@ -503,19 +600,27 @@ tier3_poc/
 │
 ├── data/
 │   ├── downloads/          # Raw downloaded data
-│   │   ├── geo_prices.pkl
+│   │   ├── geo_prices.pkl  # Historical CAISO prices
+│   │   ├── demand.pkl      # Historical demand data
 │   │   ├── power_plants.pkl
 │   │   └── weather_data.pkl
 │   ├── models/             # Trained model artifacts
 │   │   ├── geo_model.keras
 │   │   ├── geo_scaler.pkl
-│   │   └── geo_features.json
+│   │   ├── geo_features.json
+│   │   └── demand_model.pkl  # Optional trained demand model
 │   ├── training/           # Training logs
 │   └── prediction/         # API logs
 │
 ├── templates/
-│   ├── index.html          # Main web UI
+│   ├── index.html          # Main web UI (maps, charts, forecast modal)
 │   └── login.html          # Login page
+│
+├── docs/
+│   └── images/             # Screenshots
+│       ├── screenshot.png
+│       ├── 14days-forecast.png
+│       └── export-csv.png
 │
 ├── docker-compose.yml              # Training & app services
 ├── docker-compose-downloader.yml   # Download service
@@ -525,20 +630,31 @@ tier3_poc/
 ├── requirements.txt                # Python dependencies
 ├── .env                            # Environment variables
 └── README.md                       # This file
-   ```
+```
 
 ---
 
-## 📈 Future Enhancements
+## 📈 Features & Roadmap
+
+### ✅ Completed
+
+- [x] Multi-step forecasting (up to 16 days / 384 hours)
+- [x] Weather-based demand forecasting (Open-Meteo integration)
+- [x] Additional weather features (humidity, cloud cover, wind)
+- [x] Demand features (system demand, percentile, high/low indicators)
+- [x] Interactive forecast charts (Chart.js dual-axis)
+- [x] CSV export for offline analysis
+- [x] Rolling price predictions with lag feature propagation
+
+### 🚧 Future Enhancements
 
 - [ ] Real-time price updates via CAISO API
-- [ ] Multi-step forecasting (24-hour ahead)
 - [ ] Transformer/LSTM architecture for time series
-- [ ] Additional weather features (humidity, pressure)
 - [ ] Solar irradiance data (NREL)
 - [ ] EV charging demand integration
 - [ ] Model explainability (SHAP values)
 - [ ] Kubernetes deployment
+- [ ] Mobile-responsive UI improvements
 
 ---
 
