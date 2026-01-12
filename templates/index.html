@@ -758,7 +758,12 @@
                     document.getElementById('level-desc').textContent = data.description || '--';
                     document.getElementById('confidence-value').textContent = data.confidence || '--';
                     document.getElementById('time-value').textContent = 
-                        new Date(data.timestamp).toLocaleTimeString();
+                        new Date().toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: true
+                        });
 
                     // Update node info
                     if (data.nearest_node) {
