@@ -19,6 +19,14 @@ A machine learning system for predicting electricity prices at **any location in
 
 ---
 
+## 📸 Screenshot
+
+![Smart Grid - Electricity Price Prediction](docs/images/screenshot.png)
+
+*Interactive map interface with address search, real-time price predictions, and nearest CAISO node information*
+
+---
+
 ## 📋 Table of Contents
 
 - [Architecture](#architecture)
