@@ -8,3 +8,4 @@ training_logs
 *.log
 models
 .DS_Store
+.gcp-config

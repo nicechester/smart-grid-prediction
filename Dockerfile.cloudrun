@@ -1,0 +1,47 @@
+# Use the official Python 3.11 image as the base image
+FROM python:3.11-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Install system dependencies including GDAL for geopandas.
+# This part is kept as GDAL seems necessary for your app (geopandas).
+RUN apt-get update && apt-get install -y \
+    libfreetype6-dev \
+    libpng-dev \
+    libxml2-dev \
+    libxslt-dev \
+    gdal-bin \
+    libgdal-dev \
+    # Clean up APT lists to keep the image size small
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first (for Docker layer caching)
+COPY requirements.txt /app/
+
+# Install Python packages. Ensure 'gunicorn' is listed in requirements.txt!
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Create necessary directories (kept for consistency with your existing setup)
+RUN mkdir -p /app/src /app/data/downloads /app/data/training /app/data/models /app/templates
+
+# Copy the application files to the container
+COPY src/ /app/src/
+COPY templates/ /app/templates/
+
+# Copy model and data files
+COPY data/ /app/data/
+ENV PYTHONPATH=/app/src
+
+# Final WORKING DIRECTORY is /app
+# We remove the final 'WORKDIR /app/src' to simplify pathing.
+WORKDIR /app
+
+# Cloud Run automatically sets $PORT. EXPOSE is not strictly needed.
+# EXPOSE 8080
+
+# Use Gunicorn to run the app. Cloud Run will set the $PORT variable.
+# This assumes your main application object (e.g., Flask app = Flask(__name__))
+# is named 'app' and is located in /app/src/app.py (module 'src.app').
+#CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "src.app:app"]
+CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "--timeout", "300", "--graceful-timeout", "300", "src.app:app"]

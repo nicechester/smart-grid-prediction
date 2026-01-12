@@ -24,3 +24,6 @@ osmnx==2.0.6
 networkx==3.2.1
 geopandas==1.0.1
 shapely==2.0.2
+
+# GCP
+gunicorn==21.2.0
