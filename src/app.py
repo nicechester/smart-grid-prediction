@@ -632,13 +632,14 @@ def refresh_tier2_data():
 # MAIN
 # ============================================
 
-if __name__ == '__main__':
-    initialize_app()
-    
-    port = int(os.getenv('PORT', 8000))
-    logger.info(f"Starting Flask server on http://0.0.0.0:{port}")
-    logger.info(f"Model expects {len(expected_features) if expected_features else 'unknown'} features")
-    logger.info(f"Feature statistics: {'loaded' if feature_stats else 'not available'}")
-    logger.info(f"Unit handling: Smart auto-detection (converts tenths to actual units)")
-    
-    app.run(host='0.0.0.0', port=port, debug=False)
+# if __name__ == '__main__':
+initialize_app()
+
+port = int(os.getenv('PORT', 8001))
+logger.info(f"Starting Flask server on http://0.0.0.0:{port}")
+logger.info(f"Model expects {len(expected_features) if expected_features else 'unknown'} features")
+logger.info(f"Feature statistics: {'loaded' if feature_stats else 'not available'}")
+logger.info(f"Unit handling: Smart auto-detection (converts tenths to actual units)")
+logger.info(f"Available locations: {len(CALIFORNIA_CITIES)} cities, {len(CALIFORNIA_COUNTIES)} counties")
+
+# app.run(host='0.0.0.0', port=port, debug=False)

@@ -34,6 +34,6 @@ COPY data/ /app/data/
 WORKDIR /app/src
 
 # Expose the port the app runs on
-EXPOSE 8000
+EXPOSE 8001
 
 CMD ["python", "-u", "app.py"]

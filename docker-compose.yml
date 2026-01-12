@@ -30,7 +30,7 @@ services:
       - ./data:/app/data
     
     ports:
-      - "8000:8000"
+      - "8001:8001"
     
     command: python -u app.py
     
