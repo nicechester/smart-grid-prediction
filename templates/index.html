@@ -496,6 +496,398 @@
         .pac-matched {
             font-weight: 600;
         }
+
+        /* Forecast Card Styles */
+        .forecast-card {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%);
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+
+        .forecast-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .forecast-hint {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .forecast-days-selector {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+
+        .selector-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .days-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .days-btn {
+            padding: 8px 16px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .days-btn:hover {
+            border-color: var(--accent-violet);
+            color: var(--accent-violet);
+        }
+
+        .days-btn.active {
+            background: var(--accent-violet);
+            border-color: var(--accent-violet);
+            color: white;
+        }
+
+        .forecast-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 16px 24px;
+            background: linear-gradient(135deg, var(--accent-violet), var(--accent-cyan));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .forecast-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+        }
+
+        .forecast-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-icon {
+            font-size: 1.2rem;
+        }
+
+        /* Forecast Modal */
+        .forecast-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .forecast-modal.active {
+            display: flex;
+        }
+
+        .modal-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            position: relative;
+            width: 95%;
+            max-width: 1200px;
+            max-height: 90vh;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 24px 30px;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(6, 182, 212, 0.15) 100%);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .modal-title {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .modal-icon {
+            font-size: 2.5rem;
+        }
+
+        .modal-title h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--accent-violet), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .modal-title p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .modal-close {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 10px;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .modal-close:hover {
+            background: rgba(244, 63, 94, 0.2);
+            color: var(--accent-rose);
+        }
+
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        /* Chart Section */
+        .chart-section {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 16px;
+            padding: 24px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .chart-header h3 {
+            font-size: 1.1rem;
+            color: var(--text-primary);
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 20px;
+            font-size: 0.85rem;
+        }
+
+        .legend-price {
+            color: var(--accent-cyan);
+        }
+
+        .legend-demand {
+            color: var(--accent-amber);
+        }
+
+        .chart-container {
+            height: 300px;
+            position: relative;
+        }
+
+        /* Summary Table */
+        .summary-section h3 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+        }
+
+        .summary-table-wrapper {
+            overflow-x: auto;
+        }
+
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .summary-table th,
+        .summary-table td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .summary-table th {
+            background: rgba(0, 0, 0, 0.3);
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+        }
+
+        .summary-table tr:hover {
+            background: rgba(6, 182, 212, 0.05);
+        }
+
+        .summary-table td:nth-child(2) {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-cyan);
+            font-weight: 600;
+        }
+
+        .summary-table td:nth-child(3) {
+            color: var(--accent-emerald);
+        }
+
+        .summary-table td:nth-child(4) {
+            color: var(--accent-rose);
+        }
+
+        /* Weather Section */
+        .weather-section h3 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+        }
+
+        .weather-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .weather-card {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .weather-card .day {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .weather-card .temp {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .weather-card .icon {
+            font-size: 1.5rem;
+            margin: 8px 0;
+        }
+
+        .weather-card .range {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        /* Modal Footer */
+        .modal-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .data-source {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .footer-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .action-btn {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(135deg, var(--accent-violet), var(--accent-cyan));
+            border: none;
+            font-weight: 600;
+        }
+
+        .action-btn.primary:hover {
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+        }
+
+        /* Loading state for modal */
+        .modal-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            gap: 20px;
+        }
+
+        .modal-loading .spinner {
+            width: 50px;
+            height: 50px;
+        }
+
+        .modal-loading p {
+            color: var(--text-secondary);
+        }
     </style>
 </head>
 <body>
@@ -614,14 +1006,117 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Forecast Card (NEW) -->
+            <div class="card forecast-card">
+                <div class="card-header">
+                    <div class="card-icon">📈</div>
+                    <span class="card-title">Price Forecast</span>
+                </div>
+                <div class="forecast-controls">
+                    <p class="forecast-hint" id="forecast-hint">Select a location to enable forecast</p>
+                    <div class="forecast-days-selector" id="days-selector" style="display: none;">
+                        <span class="selector-label">Forecast Days:</span>
+                        <div class="days-buttons">
+                            <button class="days-btn active" data-days="7">7</button>
+                            <button class="days-btn" data-days="14">14</button>
+                            <button class="days-btn" data-days="16">16</button>
+                        </div>
+                    </div>
+                    <button class="forecast-btn" id="forecast-btn" disabled onclick="getForecast()">
+                        <span class="btn-icon">🔮</span>
+                        <span>View Price Forecast</span>
+                    </button>
+                </div>
+            </div>
         </aside>
     </main>
+
+    <!-- Forecast Modal -->
+    <div class="forecast-modal" id="forecast-modal">
+        <div class="modal-backdrop" onclick="closeForecastModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="modal-icon">📈</span>
+                    <div>
+                        <h2>Price Forecast</h2>
+                        <p id="modal-location">--</p>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeForecastModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Chart Section -->
+                <div class="chart-section">
+                    <div class="chart-header">
+                        <h3>Hourly Price Trend</h3>
+                        <div class="chart-legend">
+                            <span class="legend-price">● Price ($/MWh)</span>
+                            <span class="legend-demand">● Demand (GW)</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="forecast-chart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Daily Summary Table -->
+                <div class="summary-section">
+                    <h3>Daily Summary</h3>
+                    <div class="summary-table-wrapper">
+                        <table class="summary-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Avg Price</th>
+                                    <th>Min</th>
+                                    <th>Max</th>
+                                    <th>Peak Hour</th>
+                                    <th>Avg Demand</th>
+                                </tr>
+                            </thead>
+                            <tbody id="summary-tbody">
+                                <!-- Filled by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Weather Info -->
+                <div class="weather-section">
+                    <h3>Weather Forecast</h3>
+                    <div class="weather-cards" id="weather-cards">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <span class="data-source">Data: Open-Meteo Weather API + ML Prediction Model</span>
+                <div class="footer-actions">
+                    <button class="action-btn" onclick="exportForecastCSV()">📥 Export CSV</button>
+                    <button class="action-btn primary" onclick="closeForecastModal()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart.js for forecast visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
     <script>
         let map;
         let selectedMarker = null;
         let nodeMarkers = [];
         let autocomplete;
+        let forecastChart = null;
+        let currentForecastData = null;
+        let selectedLat = null;
+        let selectedLng = null;
+        let forecastDays = 7;
 
         // California bounds for map
         const CALIFORNIA_BOUNDS = {
@@ -728,6 +1223,9 @@
             document.getElementById('lat-value').textContent = lat.toFixed(6);
             document.getElementById('lng-value').textContent = lng.toFixed(6);
             document.getElementById('location-info').style.display = 'block';
+
+            // Enable forecast button
+            enableForecast(lat, lng);
 
             // Get prediction
             await getPrediction(lat, lng);
@@ -907,6 +1405,317 @@
                 badge.style.color = '#f43f5e';
             }
         }
+
+        // ============================================
+        // FORECAST FUNCTIONS
+        // ============================================
+
+        // Enable forecast button when location is selected
+        function enableForecast(lat, lng) {
+            selectedLat = lat;
+            selectedLng = lng;
+            
+            document.getElementById('forecast-hint').style.display = 'none';
+            document.getElementById('days-selector').style.display = 'flex';
+            document.getElementById('forecast-btn').disabled = false;
+            
+            // Setup days selector buttons
+            document.querySelectorAll('.days-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.days-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    forecastDays = parseInt(btn.dataset.days);
+                });
+            });
+        }
+
+        // Get forecast from API
+        async function getForecast() {
+            if (!selectedLat || !selectedLng) {
+                showError('Please select a location first');
+                return;
+            }
+
+            // Show modal with loading state
+            const modal = document.getElementById('forecast-modal');
+            modal.classList.add('active');
+            document.getElementById('modal-location').textContent = `Loading forecast for (${selectedLat.toFixed(4)}, ${selectedLng.toFixed(4)})...`;
+            
+            // Show loading in chart area
+            document.querySelector('.chart-container').innerHTML = `
+                <div class="modal-loading">
+                    <div class="spinner"></div>
+                    <p>Fetching ${forecastDays}-day forecast...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch(`/predict/forecast?latitude=${selectedLat}&longitude=${selectedLng}&days=${forecastDays}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    currentForecastData = data;
+                    renderForecast(data);
+                } else {
+                    showError(data.error || 'Forecast failed');
+                    closeForecastModal();
+                }
+            } catch (error) {
+                showError(`Forecast error: ${error.message}`);
+                closeForecastModal();
+            }
+        }
+
+        // Render forecast data
+        function renderForecast(data) {
+            // Update header
+            const nodeInfo = data.nearest_node;
+            document.getElementById('modal-location').textContent = 
+                `${forecastDays}-Day Forecast • Near ${nodeInfo.node_id} (${nodeInfo.area}) • ${nodeInfo.distance_km} km away`;
+
+            // Render chart
+            renderForecastChart(data.hourly);
+
+            // Render daily summary table
+            renderDailySummary(data.daily_summary);
+
+            // Render weather cards
+            renderWeatherCards(data.hourly, data.daily_summary);
+        }
+
+        // Render Chart.js chart
+        function renderForecastChart(hourlyData) {
+            const container = document.querySelector('.chart-container');
+            container.innerHTML = '<canvas id="forecast-chart"></canvas>';
+
+            const ctx = document.getElementById('forecast-chart').getContext('2d');
+
+            // Prepare data
+            const labels = hourlyData.map(h => new Date(h.timestamp));
+            const prices = hourlyData.map(h => h.price);
+            const demands = hourlyData.map(h => h.demand_mw ? h.demand_mw / 1000 : null); // Convert to GW
+
+            // Destroy existing chart
+            if (forecastChart) {
+                forecastChart.destroy();
+            }
+
+            // Create chart
+            forecastChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Price ($/MWh)',
+                            data: prices,
+                            borderColor: '#06b6d4',
+                            backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 5,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Demand (GW)',
+                            data: demands,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'transparent',
+                            borderDash: [5, 5],
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 5,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a2235',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: 'rgba(148, 163, 184, 0.2)',
+                            borderWidth: 1,
+                            padding: 12,
+                            callbacks: {
+                                title: (items) => {
+                                    const date = new Date(items[0].parsed.x);
+                                    return date.toLocaleString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: 'numeric',
+                                        minute: '2-digit'
+                                    });
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: {
+                                    day: 'MMM d'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(148, 163, 184, 0.1)'
+                            },
+                            ticks: {
+                                color: '#94a3b8'
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price ($/MWh)',
+                                color: '#06b6d4'
+                            },
+                            grid: {
+                                color: 'rgba(148, 163, 184, 0.1)'
+                            },
+                            ticks: {
+                                color: '#06b6d4',
+                                callback: (value) => '$' + value
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Demand (GW)',
+                                color: '#f59e0b'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            },
+                            ticks: {
+                                color: '#f59e0b',
+                                callback: (value) => value + ' GW'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Render daily summary table
+        function renderDailySummary(dailySummary) {
+            const tbody = document.getElementById('summary-tbody');
+            tbody.innerHTML = dailySummary.map(day => {
+                const date = new Date(day.date);
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                const peakTime = day.peak_hour > 12 ? 
+                    `${day.peak_hour - 12} PM` : 
+                    (day.peak_hour === 12 ? '12 PM' : `${day.peak_hour} AM`);
+                
+                return `
+                    <tr>
+                        <td>${formattedDate}</td>
+                        <td>$${day.avg_price.toFixed(2)}</td>
+                        <td>$${day.min_price.toFixed(2)}</td>
+                        <td>$${day.max_price.toFixed(2)}</td>
+                        <td>${peakTime}</td>
+                        <td>${day.avg_demand_mw ? (day.avg_demand_mw / 1000).toFixed(1) + ' GW' : '--'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Render weather cards
+        function renderWeatherCards(hourlyData, dailySummary) {
+            const container = document.getElementById('weather-cards');
+            
+            // Group by day and get first entry for each day
+            const dailyWeather = [];
+            dailySummary.forEach((day, i) => {
+                const dayData = hourlyData.filter(h => h.timestamp.startsWith(day.date));
+                if (dayData.length > 0) {
+                    const temps = dayData.map(h => h.temp_c);
+                    const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+                    dailyWeather.push({
+                        date: day.date,
+                        avgTemp: avgTemp,
+                        minTemp: Math.min(...temps),
+                        maxTemp: Math.max(...temps)
+                    });
+                }
+            });
+
+            container.innerHTML = dailyWeather.slice(0, 7).map(day => {
+                const date = new Date(day.date);
+                const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                
+                // Weather icon based on temp
+                let icon = '☀️';
+                if (day.avgTemp < 10) icon = '❄️';
+                else if (day.avgTemp < 18) icon = '🌤️';
+                else if (day.avgTemp > 30) icon = '🔥';
+                
+                return `
+                    <div class="weather-card">
+                        <div class="day">${dayName}<br>${dateStr}</div>
+                        <div class="icon">${icon}</div>
+                        <div class="temp">${day.avgTemp.toFixed(0)}°C</div>
+                        <div class="range">${day.minTemp.toFixed(0)}° / ${day.maxTemp.toFixed(0)}°</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Close forecast modal
+        function closeForecastModal() {
+            document.getElementById('forecast-modal').classList.remove('active');
+        }
+
+        // Export forecast to CSV
+        function exportForecastCSV() {
+            if (!currentForecastData) return;
+
+            const hourly = currentForecastData.hourly;
+            let csv = 'Timestamp,Price ($/MWh),Demand (MW),Temperature (°C),Level,Is Daytime\n';
+            
+            hourly.forEach(h => {
+                csv += `${h.timestamp},${h.price},${h.demand_mw || ''},${h.temp_c},${h.level},${h.is_daytime}\n`;
+            });
+
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `price_forecast_${forecastDays}day_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeForecastModal();
+            }
+        });
     </script>
     <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&libraries=places&callback=initMap" async defer></script>
 </body>

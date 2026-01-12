@@ -19,7 +19,7 @@ services:
       python download_geo.py 
         --sample 200 
         --strategy geographic 
-        --months 3 
+        --months 18
         --delay 2.0
         --output-dir /app/data/downloads
     

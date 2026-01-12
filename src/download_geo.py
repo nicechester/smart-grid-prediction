@@ -335,8 +335,151 @@ class GeoDataDownloader:
         return output_path
 
 
+def download_demand_data(output_dir: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
+    """
+    Download California system demand from CAISO OASIS (SLD_FCST query)
+    
+    This fetches actual hourly demand data for the entire CAISO system,
+    which can be used for:
+    1. Training demand forecasting models
+    2. Extracting hourly/seasonal demand patterns
+    3. As a feature for price prediction
+    
+    Args:
+        output_dir: Directory to save the demand data
+        start_date: Start date
+        end_date: End date
+    
+    Returns:
+        DataFrame with demand data, or None if failed
+    """
+    import zipfile
+    import io
+    import requests
+    
+    BASE_URL = "https://oasis.caiso.com/oasisapi/SingleZip"
+    all_data = []
+    
+    logger.info("=" * 60)
+    logger.info("DOWNLOADING CAISO SYSTEM DEMAND DATA")
+    logger.info("=" * 60)
+    
+    # Split into 29-day chunks (CAISO API limit is 31 days)
+    current_start = start_date
+    chunk_num = 0
+    
+    while current_start < end_date:
+        current_end = min(current_start + timedelta(days=29), end_date)
+        chunk_num += 1
+        
+        start_str = current_start.strftime('%Y%m%dT07:00-0000')
+        end_str = current_end.strftime('%Y%m%dT07:00-0000')
+        
+        logger.info(f"  Chunk {chunk_num}: {current_start.strftime('%Y-%m-%d')} to {current_end.strftime('%Y-%m-%d')}")
+        
+        params = {
+            'resultformat': '6',  # CSV format
+            'queryname': 'SLD_FCST',  # System Load/Demand Forecast
+            'version': '1',
+            'startdatetime': start_str,
+            'enddatetime': end_str,
+            'market_run_id': 'ACTUAL'  # ACTUAL, DAM, 2DA, 7DA
+        }
+        
+        try:
+            response = requests.get(BASE_URL, params=params, timeout=60)
+            response.raise_for_status()
+            
+            # Check for XML error
+            if response.content.startswith(b'<?xml'):
+                logger.warning(f"    API returned XML error, skipping chunk")
+                current_start = current_end + timedelta(days=1)
+                time.sleep(Tier2Config.RATE_LIMIT_DELAY)
+                continue
+            
+            # Open zip and read CSV
+            with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+                csv_files = [f for f in zf.namelist() if f.endswith('.csv')]
+                
+                if not csv_files:
+                    logger.warning(f"    Empty zip, skipping chunk")
+                    current_start = current_end + timedelta(days=1)
+                    time.sleep(Tier2Config.RATE_LIMIT_DELAY)
+                    continue
+                
+                with zf.open(csv_files[0]) as f:
+                    df = pd.read_csv(f)
+            
+            if df.empty:
+                logger.warning(f"    Empty data, skipping chunk")
+            else:
+                # Filter for system-wide demand (CA ISO total)
+                if 'TAC_AREA_NAME' in df.columns:
+                    df = df[df['TAC_AREA_NAME'] == 'CA ISO-TAC']
+                
+                # Parse timestamp
+                if 'INTERVALSTARTTIME_GMT' in df.columns:
+                    df['timestamp'] = pd.to_datetime(df['INTERVALSTARTTIME_GMT'])
+                elif 'OPR_DT' in df.columns:
+                    df['timestamp'] = pd.to_datetime(df['OPR_DT'])
+                
+                # Get demand value
+                if 'MW' in df.columns:
+                    df['demand_mw'] = pd.to_numeric(df['MW'], errors='coerce')
+                elif 'VALUE' in df.columns:
+                    df['demand_mw'] = pd.to_numeric(df['VALUE'], errors='coerce')
+                
+                all_data.append(df[['timestamp', 'demand_mw']].dropna())
+                logger.info(f"    ✓ Got {len(df)} records")
+        
+        except Exception as e:
+            logger.error(f"    ✗ Failed: {e}")
+        
+        current_start = current_end + timedelta(days=1)
+        time.sleep(Tier2Config.RATE_LIMIT_DELAY)
+    
+    if not all_data:
+        logger.error("No demand data downloaded!")
+        return None
+    
+    # Combine all chunks
+    combined = pd.concat(all_data, ignore_index=True)
+    combined = combined.drop_duplicates(subset=['timestamp']).sort_values('timestamp')
+    combined.set_index('timestamp', inplace=True)
+    
+    # Save to pickle
+    demand_path = os.path.join(output_dir, 'demand.pkl')
+    combined.to_pickle(demand_path)
+    
+    # Save metadata
+    metadata = {
+        'download_date': datetime.now().isoformat(),
+        'records': len(combined),
+        'date_range': {
+            'start': str(combined.index.min()),
+            'end': str(combined.index.max())
+        },
+        'demand_stats': {
+            'min': float(combined['demand_mw'].min()),
+            'max': float(combined['demand_mw'].max()),
+            'mean': float(combined['demand_mw'].mean()),
+            'std': float(combined['demand_mw'].std())
+        }
+    }
+    
+    metadata_path = os.path.join(output_dir, 'demand_metadata.json')
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    logger.info(f"✅ Saved {len(combined)} demand records to {demand_path}")
+    logger.info(f"   Demand range: {metadata['demand_stats']['min']:.0f} - {metadata['demand_stats']['max']:.0f} MW")
+    logger.info(f"   Average: {metadata['demand_stats']['mean']:.0f} MW")
+    
+    return combined
+
+
 def download_supporting_data(output_dir: str, start_date: datetime, end_date: datetime):
-    """Download power plants and earthquake data (unchanged from before)"""
+    """Download power plants, earthquake data, and system demand"""
     
     # Power plants
     logger.info("Downloading power plant data...")
@@ -359,6 +502,13 @@ def download_supporting_data(output_dir: str, start_date: datetime, end_date: da
             logger.info(f"✅ Saved {len(quakes_df)} earthquakes")
     except Exception as e:
         logger.error(f"Failed to download earthquakes: {e}")
+    
+    # System demand (NEW)
+    logger.info("Downloading system demand data...")
+    try:
+        download_demand_data(output_dir, start_date, end_date)
+    except Exception as e:
+        logger.error(f"Failed to download demand data: {e}")
 
 
 def main():

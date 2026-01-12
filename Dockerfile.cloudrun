@@ -31,6 +31,7 @@ COPY src/caiso_nodes.py /app/src/
 COPY src/stations.json /app/src/
 COPY src/tier2_pipeline.py /app/src/
 COPY src/data_loader.py /app/src/
+COPY src/demand_forecast.py /app/src/
 
 # Copy templates
 COPY templates/ /app/templates/

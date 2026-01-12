@@ -452,6 +452,267 @@ def geo_model_info():
 
 
 # ============================================
+# FORECAST ENDPOINTS (NEW)
+# ============================================
+
+@geo_bp.route('/predict/forecast', methods=['GET', 'POST'])
+def predict_forecast():
+    """
+    Predict electricity prices for up to 16 days (384 hours)
+    Uses weather forecast from Open-Meteo + demand estimation
+    
+    Query params or JSON body:
+        - latitude/lat: float (required)
+        - longitude/lon: float (required)
+        - days: int (optional, default 7, max 16)
+    
+    Returns:
+        JSON with hourly price forecasts and daily summary
+    """
+    if geo_predictor is None:
+        return jsonify({'error': 'Model not loaded'}), 503
+    
+    try:
+        # Get parameters
+        data = request.get_json() if request.method == 'POST' else request.args
+        lat = float(data.get('latitude') or data.get('lat'))
+        lon = float(data.get('longitude') or data.get('lon'))
+        days = min(int(data.get('days', 7)), 16)
+        
+        if not is_in_california(lat, lon):
+            return jsonify({'error': 'Location must be in California'}), 400
+        
+        # Import demand forecast module
+        from demand_forecast import WeatherForecast, DemandForecaster
+        
+        # Get weather forecast (up to 16 days)
+        weather_df = WeatherForecast.get_forecast(lat, lon, days=days)
+        
+        # Initialize demand forecaster (uses pattern-based estimation if not trained)
+        demand_forecaster = DemandForecaster()
+        
+        # Try to load trained demand model if available
+        if os.path.exists('/app/data/models'):
+            model_dir = '/app/data/models'
+        else:
+            model_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'models')
+        demand_model_path = os.path.join(model_dir, 'demand_model.pkl')
+        if os.path.exists(demand_model_path):
+            demand_forecaster.load(demand_model_path)
+        
+        # Get demand forecast
+        demand_forecast = demand_forecaster.forecast(weather_df)
+        
+        # Find nearest CAISO node
+        node_id, node_info, node_distance = find_nearest_node(lat, lon)
+        node_type = node_info.get('node_type', 'LOAD') if node_info else 'LOAD'
+        area = node_info.get('area', 'CA') if node_info else 'CA'
+        
+        # Predict price for each hour using rolling price history
+        predictions = []
+        price_history = []  # Keep track of predicted prices for lag features
+        TYPICAL_PRICE = 45.0  # Typical California LMP
+        
+        for idx in weather_df.index:
+            # Get demand for this hour
+            demand_mw = demand_forecast.loc[idx, 'demand_mw'] if idx in demand_forecast.index else None
+            
+            # Build features
+            features = feature_builder.build_all_features(
+                lat=lat,
+                lon=lon,
+                timestamp=idx,
+                node_type=node_type,
+                area=area,
+                weather_data={
+                    'temperature': weather_df.loc[idx, 'temperature_c'],
+                    'humidity': weather_df.loc[idx, 'humidity'],
+                    'wind_speed': weather_df.loc[idx, 'wind_speed_mps'],
+                    'cloud_cover': weather_df.loc[idx, 'cloud_cover']
+                },
+                demand_mw=demand_mw
+            )
+            
+            # Override lag features with rolling predictions
+            # This creates more realistic forecasts where each prediction
+            # influences the next (autoregressive style)
+            if len(price_history) >= 1:
+                features['price_lag_1'] = price_history[-1]
+            else:
+                features['price_lag_1'] = TYPICAL_PRICE
+            
+            if len(price_history) >= 3:
+                features['price_lag_3'] = price_history[-3]
+            else:
+                features['price_lag_3'] = TYPICAL_PRICE
+            
+            if len(price_history) >= 6:
+                features['price_lag_6'] = price_history[-6]
+            else:
+                features['price_lag_6'] = TYPICAL_PRICE
+            
+            if len(price_history) >= 12:
+                features['price_lag_12'] = price_history[-12]
+            else:
+                features['price_lag_12'] = TYPICAL_PRICE
+            
+            if len(price_history) >= 24:
+                features['price_lag_24'] = price_history[-24]
+            else:
+                features['price_lag_24'] = TYPICAL_PRICE
+            
+            # Fill any other missing features
+            for feat in geo_predictor.feature_names:
+                if feat not in features:
+                    features[feat] = 0.0
+            
+            # Predict
+            price = geo_predictor.predict_single(features)
+            price = float(np.clip(price, 0, 500))  # Clip to reasonable range (min 0)
+            level, description = classify_price_level(price)
+            
+            # Add to rolling history
+            price_history.append(price)
+            
+            predictions.append({
+                'timestamp': idx.isoformat(),
+                'price': round(float(price), 2),
+                'level': level,
+                'demand_mw': int(round(float(demand_mw), 0)) if demand_mw is not None else None,
+                'temp_c': round(float(weather_df.loc[idx, 'temperature_c']), 1),
+                'wind_mps': round(float(weather_df.loc[idx, 'wind_speed_mps']), 1),
+                'humidity': int(weather_df.loc[idx, 'humidity']),
+                'is_daytime': bool(weather_df.loc[idx, 'is_daytime'])
+            })
+        
+        # Build daily summary
+        daily_summary = []
+        for day_num in range(days):
+            day_start = day_num * 24
+            day_end = min((day_num + 1) * 24, len(predictions))
+            day_data = predictions[day_start:day_end]
+            
+            if day_data:
+                day_prices = [p['price'] for p in day_data]
+                day_demands = [p['demand_mw'] for p in day_data if p['demand_mw']]
+                
+                daily_summary.append({
+                    'date': day_data[0]['timestamp'][:10],
+                    'avg_price': round(float(np.mean(day_prices)), 2),
+                    'min_price': round(float(min(day_prices)), 2),
+                    'max_price': round(float(max(day_prices)), 2),
+                    'peak_hour': int(day_prices.index(max(day_prices))),
+                    'avg_demand_mw': int(round(float(np.mean(day_demands)), 0)) if day_demands else None
+                })
+        
+        return jsonify({
+            'location': {'latitude': lat, 'longitude': lon},
+            'nearest_node': {
+                'node_id': node_id,
+                'area': node_info.get('area', '') if node_info else '',
+                'distance_km': round(node_distance, 2)
+            },
+            'forecast_days': days,
+            'total_hours': len(predictions),
+            'daily_summary': daily_summary,
+            'hourly': predictions,
+            'generated_at': datetime.now().isoformat(),
+            'data_sources': {
+                'weather': 'Open-Meteo API',
+                'demand': 'Pattern-based estimation' if not demand_forecaster.is_fitted else 'Trained ML model'
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Forecast error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@geo_bp.route('/demand/forecast', methods=['GET', 'POST'])
+def demand_forecast_endpoint():
+    """
+    Forecast electricity demand for up to 16 days
+    Based on weather forecast + learned/typical patterns
+    
+    Query params or JSON body:
+        - latitude/lat: float (required)
+        - longitude/lon: float (required)
+        - days: int (optional, default 7, max 16)
+    
+    Returns:
+        JSON with hourly demand forecasts
+    """
+    try:
+        data = request.get_json() if request.method == 'POST' else request.args
+        lat = float(data.get('latitude') or data.get('lat'))
+        lon = float(data.get('longitude') or data.get('lon'))
+        days = min(int(data.get('days', 7)), 16)
+        
+        if not is_in_california(lat, lon):
+            return jsonify({'error': 'Location must be in California'}), 400
+        
+        from demand_forecast import WeatherForecast, DemandForecaster
+        
+        # Get weather forecast
+        weather_df = WeatherForecast.get_forecast(lat, lon, days=days)
+        
+        # Initialize and optionally load demand forecaster
+        demand_forecaster = DemandForecaster()
+        
+        if os.path.exists('/app/data/models'):
+            model_dir = '/app/data/models'
+        else:
+            model_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'models')
+        demand_model_path = os.path.join(model_dir, 'demand_model.pkl')
+        if os.path.exists(demand_model_path):
+            demand_forecaster.load(demand_model_path)
+        
+        # Forecast demand
+        demand_forecast = demand_forecaster.forecast(weather_df)
+        
+        # Format response
+        hourly = []
+        for idx in demand_forecast.index:
+            hourly.append({
+                'timestamp': idx.isoformat(),
+                'demand_mw': int(round(float(demand_forecast.loc[idx, 'demand_mw']), 0)),
+                'temp_c': round(float(weather_df.loc[idx, 'temperature_c']), 1),
+                'is_daytime': bool(weather_df.loc[idx, 'is_daytime'])
+            })
+        
+        # Daily summary
+        daily_summary = []
+        for day_num in range(days):
+            day_start = day_num * 24
+            day_end = min((day_num + 1) * 24, len(hourly))
+            day_data = hourly[day_start:day_end]
+            
+            if day_data:
+                day_demands = [d['demand_mw'] for d in day_data]
+                daily_summary.append({
+                    'date': day_data[0]['timestamp'][:10],
+                    'avg_demand_mw': int(round(float(np.mean(day_demands)), 0)),
+                    'min_demand_mw': int(round(float(min(day_demands)), 0)),
+                    'max_demand_mw': int(round(float(max(day_demands)), 0)),
+                    'peak_hour': int(day_demands.index(max(day_demands)))
+                })
+        
+        return jsonify({
+            'location': {'latitude': lat, 'longitude': lon},
+            'forecast_days': days,
+            'total_hours': len(hourly),
+            'daily_summary': daily_summary,
+            'hourly': hourly,
+            'generated_at': datetime.now().isoformat(),
+            'model_type': 'pattern-based' if not demand_forecaster.is_fitted else 'ml-trained'
+        })
+        
+    except Exception as e:
+        logger.error(f"Demand forecast error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
 # APP FACTORY & MODULE-LEVEL APP
 # ============================================
 

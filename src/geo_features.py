@@ -98,6 +98,15 @@ LAG_FEATURES = [
     'price_lag_24',
 ]
 
+# Demand features (NEW)
+DEMAND_FEATURES = [
+    'system_demand_mw',       # Actual or forecasted system demand
+    'demand_percentile',      # Where demand is relative to typical (0-100)
+    'demand_vs_typical',      # Ratio: actual / typical for this hour
+    'is_high_demand',         # 1 if demand > 90th percentile
+    'is_low_demand',          # 1 if demand < 10th percentile
+]
+
 # Complete feature list
 ALL_FEATURES = (
     GEO_FEATURES + 
@@ -107,7 +116,8 @@ ALL_FEATURES = (
     WEATHER_FEATURES + 
     GRID_FEATURES + 
     TIME_FEATURES + 
-    LAG_FEATURES
+    LAG_FEATURES +
+    DEMAND_FEATURES
 )
 
 
@@ -278,18 +288,97 @@ class GeoFeatureBuilder:
             'dow_cos': np.cos(2 * np.pi * day_of_week / 7),
         }
     
-    def build_lag_features(self, prices_series: pd.Series, 
-                           current_idx: int) -> Dict[str, float]:
-        """Build price lag features from a time series"""
+    def build_lag_features(self, prices_series: pd.Series = None, 
+                           current_idx: int = 0,
+                           default_price: float = None) -> Dict[str, float]:
+        """
+        Build price lag features from a time series
+        
+        Args:
+            prices_series: Historical price series
+            current_idx: Current index in the series
+            default_price: Default price to use when no history available
+                          (uses typical California LMP if None)
+        """
         lags = [1, 3, 6, 12, 24]
         features = {}
         
-        for lag in lags:
-            lag_idx = current_idx - lag
-            if lag_idx >= 0:
-                features[f'price_lag_{lag}'] = float(prices_series.iloc[lag_idx])
-            else:
-                features[f'price_lag_{lag}'] = float(prices_series.iloc[current_idx])  # Use current as fallback
+        # Typical California LMP prices by hour ($/MWh)
+        # Used when no price history is available (e.g., forecasting)
+        TYPICAL_PRICE = 45.0  # Average California LMP
+        
+        if default_price is None:
+            default_price = TYPICAL_PRICE
+        
+        if prices_series is not None and len(prices_series) > 0:
+            for lag in lags:
+                lag_idx = current_idx - lag
+                if lag_idx >= 0:
+                    features[f'price_lag_{lag}'] = float(prices_series.iloc[lag_idx])
+                else:
+                    features[f'price_lag_{lag}'] = default_price
+        else:
+            # No price history - use default/typical prices
+            for lag in lags:
+                features[f'price_lag_{lag}'] = default_price
+        
+        return features
+    
+    def build_demand_features(self, timestamp: datetime,
+                              demand_mw: float = None,
+                              demand_history: pd.Series = None) -> Dict[str, float]:
+        """
+        Build demand-related features
+        
+        Args:
+            timestamp: Current timestamp
+            demand_mw: Current/forecasted demand in MW (if known)
+            demand_history: Historical demand series for percentile calculation
+        
+        Returns:
+            Dictionary of demand features
+        """
+        # Default California demand patterns (typical values)
+        # These are based on CAISO historical averages
+        HOURLY_TYPICAL = {
+            0: 22000, 1: 21000, 2: 20500, 3: 20000, 4: 20000, 5: 20500,
+            6: 22000, 7: 25000, 8: 27000, 9: 28500, 10: 29000, 11: 29500,
+            12: 29000, 13: 28500, 14: 28000, 15: 28000, 16: 29000, 17: 31000,
+            18: 33000, 19: 34000, 20: 33000, 21: 31000, 22: 28000, 23: 25000
+        }
+        MONTHLY_FACTOR = {
+            1: 0.85, 2: 0.82, 3: 0.80, 4: 0.82, 5: 0.88, 6: 1.05,
+            7: 1.20, 8: 1.25, 9: 1.15, 10: 0.95, 11: 0.88, 12: 0.90
+        }
+        
+        hour = timestamp.hour
+        month = timestamp.month
+        
+        # Calculate typical demand for this hour/month
+        typical_demand = HOURLY_TYPICAL[hour] * MONTHLY_FACTOR[month]
+        
+        # If actual/forecasted demand provided, use it
+        if demand_mw is not None:
+            actual_demand = demand_mw
+        else:
+            # Estimate based on typical patterns
+            actual_demand = typical_demand
+        
+        # Calculate percentile if history available
+        if demand_history is not None and len(demand_history) > 100:
+            percentile = (demand_history < actual_demand).mean() * 100
+        else:
+            # Estimate percentile from typical patterns
+            percentile = 50.0 + (actual_demand - typical_demand) / typical_demand * 30
+            percentile = max(0, min(100, percentile))
+        
+        features = {
+            'system_demand_mw': actual_demand,
+            'demand_percentile': percentile,
+            'demand_vs_typical': actual_demand / typical_demand if typical_demand > 0 else 1.0,
+            'is_high_demand': 1.0 if percentile >= 90 else 0.0,
+            'is_low_demand': 1.0 if percentile <= 10 else 0.0,
+        }
         
         return features
     
@@ -298,9 +387,26 @@ class GeoFeatureBuilder:
                            node_type: str = 'LOAD',
                            area: str = 'CA',
                            weather_df: pd.DataFrame = None,
+                           weather_data: Dict[str, float] = None,
                            price_history: pd.Series = None,
-                           current_idx: int = 0) -> Dict[str, float]:
-        """Build complete feature set for a single observation"""
+                           current_idx: int = 0,
+                           demand_mw: float = None,
+                           demand_history: pd.Series = None) -> Dict[str, float]:
+        """
+        Build complete feature set for a single observation
+        
+        Args:
+            lat, lon: Geographic coordinates
+            timestamp: Observation timestamp
+            node_type: 'LOAD' or 'GEN'
+            area: CAISO area code
+            weather_df: DataFrame of weather stations (for interpolation)
+            weather_data: Dict with weather values (alternative to interpolation)
+            price_history: Price time series for lag features
+            current_idx: Current index in price_history
+            demand_mw: Known/forecasted demand in MW
+            demand_history: Historical demand for percentile calculation
+        """
         features = {}
         
         # Geographic features
@@ -309,8 +415,15 @@ class GeoFeatureBuilder:
         # Node features
         features.update(self.build_node_features(node_type, area))
         
-        # Weather features
-        features.update(self.build_weather_features(lat, lon, weather_df))
+        # Weather features - use provided data or interpolate
+        if weather_data:
+            features['temperature'] = weather_data.get('temperature', 20.0)
+            features['wind_speed'] = weather_data.get('wind_speed', 0.0)
+            features['precipitation'] = weather_data.get('precipitation', 0.0)
+            features['temp_max'] = weather_data.get('temp_max', features['temperature'] + 5)
+            features['temp_min'] = weather_data.get('temp_min', features['temperature'] - 5)
+        else:
+            features.update(self.build_weather_features(lat, lon, weather_df))
         
         # Grid features
         features.update(self.build_grid_features(lat, lon))
@@ -318,12 +431,11 @@ class GeoFeatureBuilder:
         # Time features
         features.update(self.build_time_features(timestamp))
         
-        # Lag features
-        if price_history is not None:
-            features.update(self.build_lag_features(price_history, current_idx))
-        else:
-            for lag in [1, 3, 6, 12, 24]:
-                features[f'price_lag_{lag}'] = 0.0
+        # Lag features (use typical CA prices if no history available)
+        features.update(self.build_lag_features(price_history, current_idx))
+        
+        # Demand features (NEW)
+        features.update(self.build_demand_features(timestamp, demand_mw, demand_history))
         
         return features
 
