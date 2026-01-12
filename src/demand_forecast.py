@@ -272,8 +272,11 @@ class DemandForecaster:
         """
         features = pd.DataFrame(index=weather_df.index)
         
-        # Temperature features
-        temp = weather_df.get('temperature_c', pd.Series(20.0, index=weather_df.index))
+        # Temperature features - handle None/NaN values
+        if 'temperature_c' in weather_df.columns:
+            temp = weather_df['temperature_c'].fillna(20.0)
+        else:
+            temp = pd.Series(20.0, index=weather_df.index)
         features['temperature'] = temp
         features['temp_squared'] = temp ** 2  # Non-linear effect
         features['discomfort'] = abs(temp - 20)  # Distance from comfort zone
@@ -282,10 +285,10 @@ class DemandForecaster:
         features['cooling_degrees'] = np.maximum(0, temp - 18)
         features['heating_degrees'] = np.maximum(0, 18 - temp)
         
-        # Other weather
-        features['humidity'] = weather_df.get('humidity', 50)
-        features['wind_speed'] = weather_df.get('wind_speed_mps', 0)
-        features['cloud_cover'] = weather_df.get('cloud_cover', 50)
+        # Other weather - handle None/NaN values
+        features['humidity'] = weather_df['humidity'].fillna(50) if 'humidity' in weather_df.columns else 50
+        features['wind_speed'] = weather_df['wind_speed_mps'].fillna(0) if 'wind_speed_mps' in weather_df.columns else 0
+        features['cloud_cover'] = weather_df['cloud_cover'].fillna(50) if 'cloud_cover' in weather_df.columns else 50
         
         # Time features from index
         features['hour'] = weather_df.index.hour
@@ -393,8 +396,8 @@ class DemandForecaster:
         result = pd.DataFrame({
             'timestamp': weather_forecast_df.index,
             'demand_mw': predictions,
-            'temperature_c': weather_forecast_df.get('temperature_c', 20),
-            'is_daytime': weather_forecast_df.get('is_daytime', True)
+            'temperature_c': weather_forecast_df['temperature_c'].fillna(20) if 'temperature_c' in weather_forecast_df.columns else 20,
+            'is_daytime': weather_forecast_df['is_daytime'].fillna(True) if 'is_daytime' in weather_forecast_df.columns else True
         })
         result.set_index('timestamp', inplace=True)
         
@@ -407,8 +410,15 @@ class DemandForecaster:
         for ts in weather_df.index:
             base = self.patterns.get_typical_demand(ts)
             
-            # Weather adjustment
-            temp = weather_df.loc[ts].get('temperature_c', 20)
+            # Weather adjustment - safely get temperature with fallback
+            try:
+                temp = weather_df.loc[ts, 'temperature_c']
+                if temp is None or pd.isna(temp):
+                    temp = 20.0
+                temp = float(temp)
+            except (KeyError, TypeError):
+                temp = 20.0
+            
             if temp > 25:
                 # AC effect
                 ac_factor = 1 + 0.02 * (temp - 25) ** 1.5
@@ -423,8 +433,8 @@ class DemandForecaster:
         result = pd.DataFrame({
             'timestamp': weather_df.index,
             'demand_mw': demands,
-            'temperature_c': weather_df.get('temperature_c', 20),
-            'is_daytime': weather_df.get('is_daytime', True)
+            'temperature_c': weather_df['temperature_c'].fillna(20) if 'temperature_c' in weather_df.columns else 20,
+            'is_daytime': weather_df['is_daytime'].fillna(True) if 'is_daytime' in weather_df.columns else True
         })
         result.set_index('timestamp', inplace=True)
         
