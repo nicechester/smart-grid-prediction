@@ -106,13 +106,22 @@ echo "Deploying to Cloud Run..."
 
 # Get Google Maps API key from environment or .env file
 if [ -z "${GOOGLE_MAPS_API_KEY}" ] && [ -f .env ]; then
-  export $(grep GOOGLE_MAPS_API_KEY .env | xargs)
+  # Parse .env file properly (handles KEY=value and KEY="value" formats)
+  GOOGLE_MAPS_API_KEY=$(grep -E '^GOOGLE_MAPS_API_KEY=' .env | cut -d '=' -f2 | tr -d '"' | tr -d "'")
+  export GOOGLE_MAPS_API_KEY
 fi
 
 if [ -z "${GOOGLE_MAPS_API_KEY}" ]; then
-  echo "⚠️  Warning: GOOGLE_MAPS_API_KEY not set. Map features will not work."
-  echo "   Set it with: export GOOGLE_MAPS_API_KEY=your_key"
+  echo "❌ Error: GOOGLE_MAPS_API_KEY not set!"
+  echo "   Add to .env file: GOOGLE_MAPS_API_KEY=your_api_key"
+  echo "   Or export: export GOOGLE_MAPS_API_KEY=your_key"
+  echo ""
+  echo "   Get a key from: https://console.cloud.google.com/apis/credentials"
+  echo "   Required APIs: Maps JavaScript API, Places API"
+  exit 1
 fi
+
+echo "✓ Google Maps API key found"
 
 gcloud run deploy ${SERVICE_NAME} \
   --image ${IMAGE_NAME} \
@@ -124,7 +133,7 @@ gcloud run deploy ${SERVICE_NAME} \
   --max-instances 10 \
   --min-instances 0 \
   --timeout 600 \
-  --set-env-vars="NCEI_TOKEN='TDNQRthmEjyQqTHBKZMaQvKvlWUBsbri',GOOGLE_MAPS_API_KEY='${GOOGLE_MAPS_API_KEY}'"
+  --set-env-vars="NCEI_TOKEN=TDNQRthmEjyQqTHBKZMaQvKvlWUBsbri,GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}"
 
 echo "✓ Deployed!"
 echo ""
