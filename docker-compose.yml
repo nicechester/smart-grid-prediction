@@ -1,8 +1,8 @@
 services:    
-  # Training service - trains the model using downloaded data
+  # Training service - builds features and trains the geo model
   trainer:
     build: .
-    container_name: smart_grid_trainer
+    container_name: smart_grid_geo_trainer
     
     env_file:
       - .env
@@ -10,17 +10,23 @@ services:
     volumes:
       - ./src:/app/src
       - ./data:/app/data
+    
+    working_dir: /app/src
         
-    # Train using data from /app/data/downloads
-    command: python train.py --epochs 50 --batch-size 32
+    # Build features from downloaded geo prices, then train
+    command: >
+      sh -c "echo '=== Building geo features ===' &&
+             python geo_features.py --prices /app/data/downloads/geo_prices.pkl --plants /app/data/downloads/power_plants.pkl --output /app/data/downloads/geo_training.pkl &&
+             echo '=== Training geo model ===' &&
+             python train_geo.py --training-data /app/data/downloads/geo_training.pkl --output-dir /app/data/models --epochs 100"
     
     # Don't restart after training completes
     restart: "no"
     
-  # Web service - runs the Flask app
+  # Web service - runs the Flask app with geo prediction
   app:
     build: .
-    container_name: smart_grid_app
+    container_name: smart_grid_geo_app
     
     env_file:
       - .env
@@ -32,7 +38,14 @@ services:
     ports:
       - "8001:8001"
     
-    command: python -u app.py
+    working_dir: /app/src
+    
+    # Run geo prediction API
+    command: python -u app_geo.py
+    
+    environment:
+      - PORT=8001
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
     
     # Keep app running
     restart: unless-stopped

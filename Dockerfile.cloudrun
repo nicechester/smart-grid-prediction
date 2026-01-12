@@ -1,11 +1,11 @@
-# Use the official Python 3.11 image as the base image
+# Dockerfile for Google Cloud Run deployment
+# Contains only the geo prediction app with pre-trained model
+
 FROM python:3.11-slim
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies including GDAL for geopandas.
-# This part is kept as GDAL seems necessary for your app (geopandas).
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libpng-dev \
@@ -13,35 +13,44 @@ RUN apt-get update && apt-get install -y \
     libxslt-dev \
     gdal-bin \
     libgdal-dev \
-    # Clean up APT lists to keep the image size small
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first (for Docker layer caching)
+# Copy requirements and install
 COPY requirements.txt /app/
-
-# Install Python packages. Ensure 'gunicorn' is listed in requirements.txt!
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Create necessary directories (kept for consistency with your existing setup)
-RUN mkdir -p /app/src /app/data/downloads /app/data/training /app/data/models /app/templates
+# Create directories
+RUN mkdir -p /app/src /app/data/downloads /app/data/models /app/templates
 
-# Copy the application files to the container
-COPY src/ /app/src/
+# Copy source files (geo-based prediction)
+COPY src/app_geo.py /app/src/
+COPY src/train_geo.py /app/src/
+COPY src/geo_features.py /app/src/
+COPY src/geo_utils.py /app/src/
+COPY src/caiso_nodes.py /app/src/
+COPY src/stations.json /app/src/
+COPY src/tier2_pipeline.py /app/src/
+COPY src/data_loader.py /app/src/
+
+# Copy templates
 COPY templates/ /app/templates/
 
-# Copy model and data files
-COPY data/ /app/data/
+# Copy pre-trained geo model and data
+COPY data/models/geo_model.keras /app/data/models/
+COPY data/models/geo_scaler.pkl /app/data/models/
+COPY data/models/geo_features.json /app/data/models/
+COPY data/models/geo_metadata.json /app/data/models/
+
+# Copy CAISO node data (for nearest node lookups)
+COPY data/caiso-price-map.json /app/data/
+COPY data/caiso_nodes_california.json /app/data/
+
+# Copy power plants (for grid proximity features)
+COPY data/downloads/power_plants.pkl /app/data/downloads/
+
 ENV PYTHONPATH=/app/src
 
-# Final WORKING DIRECTORY is /app
-# We remove the final 'WORKDIR /app/src' to simplify pathing.
 WORKDIR /app
 
-# Cloud Run automatically sets $PORT. EXPOSE is not strictly needed.
-# EXPOSE 8080
-
-# Use Gunicorn to run the app. Cloud Run will set the $PORT variable.
-# This assumes your main application object (e.g., Flask app = Flask(__name__))
-# is named 'app' and is located in /app/src/app.py (module 'src.app').
-#CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "src.app:app"]
-CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "--timeout", "300", "--graceful-timeout", "300", "src.app:app"]
+# Run with Gunicorn (Cloud Run sets $PORT automatically, default 8080)
+CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "--timeout", "300", "--graceful-timeout", "300", "src.app_geo:app"]

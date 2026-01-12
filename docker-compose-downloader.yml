@@ -1,7 +1,7 @@
 services:
   downloader:
     build: .
-    container_name: smart_grid_downloader
+    container_name: smart_grid_geo_downloader
     
     env_file:
       - .env
@@ -10,8 +10,18 @@ services:
       - ./src:/app/src
       - ./data:/app/data
     
-    # Download 3 months of data by default
-    command: python download_data.py --date-range-months 36
+    working_dir: /app/src
+    
+    # Download geo-based data: 200 nodes sampled geographically, 3 months
+    # Adjust --sample for more/fewer nodes (max ~4300)
+    # Strategies: random, stratified, geographic
+    command: >
+      python download_geo.py 
+        --sample 200 
+        --strategy geographic 
+        --months 3 
+        --delay 2.0
+        --output-dir /app/data/downloads
     
     # Don't restart after download completes
     restart: "no"
